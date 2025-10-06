@@ -1,10 +1,17 @@
 #include "parser.hpp"
 #include "ast_print.hpp"
 
-// ------------------------------------------------------------
-// Simple REPL
-// ------------------------------------------------------------
+#include <replxx.hxx>   // Replxx header
+#include <iostream>
+#include <vector>
+#include <string>
+#include <string_view>
 
+using Replxx = replxx::Replxx;
+
+// ------------------------------------------------------------
+// Simple Parser REPL using Replxx
+// ------------------------------------------------------------
 int main() {
     std::cout << "Simple Parser REPL\n";
     std::cout << "Commands:\n";
@@ -14,25 +21,48 @@ int main() {
     std::cout << "  :q         - Quit\n\n";
 
     bool show_text = false;
-    std::string line;
+
+    // --- Initialize Replxx
+    Replxx rx;
+    rx.set_indent_multiline(true);
+
+    rx.set_max_history_size(1000);
+    // rx.history_load(".parser_history");
+    
+    // --- Completion callback for command prefixes
+    std::vector<std::string> cmds = {":e", ":s", ":t", ":q", "quit", "exit"};
+    rx.set_completion_callback(
+        [&](std::string const& context, int) {
+            Replxx::completions_t out;
+            for (auto const& c : cmds)
+                if (c.rfind(context, 0) == 0)
+                    out.emplace_back(c.substr(context.size()));
+            return out;
+        }
+    );
 
     while (true) {
-        std::cout << "> ";
-        if (!std::getline(std::cin, line)) break;
+        // Get user input with prompt
+        const char* input_c = rx.input("> ");
+        if (!input_c) break;  // EOF or Ctrl-D
+
+        std::string line(input_c);
         if (line.empty()) continue;
+        rx.history_add(line);
 
         if (line == ":q" || line == "quit" || line == "exit") break;
+
         if (line == ":t" || line == ":text") {
             show_text = !show_text;
             std::cout << "Node text display " << (show_text ? "ON" : "OFF") << ".\n";
             continue;
         }
 
-        bool expr_mode = line.starts_with(":e ");
-        bool stmt_mode = line.starts_with(":s ");
+        bool expr_mode = line.rfind(":e ", 0) == 0;
+        bool stmt_mode = line.rfind(":s ", 0) == 0;
         std::string_view input = line;
-
-        if (expr_mode || stmt_mode) input.remove_prefix(3);
+        if (expr_mode || stmt_mode)
+            input.remove_prefix(3);
 
         if (expr_mode) {
             ParseStream stream{input, input};
@@ -67,6 +97,7 @@ int main() {
         std::cout << "\n";
     }
 
+    // rx.history_save(".parser_history");
     std::cout << "Bye!\n";
     return 0;
 }
