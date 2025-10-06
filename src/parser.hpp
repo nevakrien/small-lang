@@ -66,6 +66,7 @@ enum class Operator {
 };
 typedef unsigned int Bp;
 static constexpr Bp CALL_BP = 16;
+static constexpr Bp SUBSCRIPT_BP = 16;
 
 
 struct Op {
@@ -130,7 +131,7 @@ struct Op {
 	constexpr Bp bp_infix_left() const noexcept {
 	    switch (kind) {
 	        case Operator::Dot:
-	        case Operator::Arrow:       return 17;
+	        case Operator::Arrow:       return 20;
 	        case Operator::Star:
 	        case Operator::Slash:
 	        case Operator::Percent:     return 14;
@@ -157,7 +158,7 @@ struct Op {
 	    switch (kind) {
 	        // left-associative ops use same as left
 	        case Operator::Dot:
-	        case Operator::Arrow:       return 17;
+	        case Operator::Arrow:       return 20;
 	        case Operator::Star:
 	        case Operator::Slash:
 	        case Operator::Percent:     return 14;
@@ -455,12 +456,18 @@ struct BinOp : Token{
 	Op op;
 };
 
+struct SubScript : Token{
+	std::unique_ptr<Expression> arr;
+	std::unique_ptr<Expression> idx;
+};
+
+
 struct Call : Token{
 	std::unique_ptr<Expression> func;
 	std::vector<Expression> args;
 };
 
-using ExpressionVariant = std::variant<Invalid,Var,Num,PreOp,BinOp,Call>;
+using ExpressionVariant = std::variant<Invalid,Var,Num,PreOp,BinOp,SubScript,Call>;
 struct Expression {
 	ExpressionVariant inner;
 	Expression() = default;
@@ -548,7 +555,6 @@ inline Error parse_atom(ParseStream& stream,Expression& out){
 
 	Num n = stream.try_number();
 	if(n.text.size()){
-		out.inner = Invalid{};
 		out.inner = std::move(n);
 		return Error();
 	}
@@ -646,6 +652,27 @@ inline Error parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
 			call.func = std::make_unique<Expression>(std::move(out));
 			call.text = {start,stream.marker()};
 			out.inner = std::move(call);
+			
+			continue;
+		}
+
+		if(stream.starts_with("[")){			
+			if(SUBSCRIPT_BP < min_bp) break;
+			stream.try_consume("[");
+			
+			SubScript sub;
+
+			sub.idx = std::make_unique<Expression>();
+			res = parse_expression(stream,*sub.idx);
+			if(res) return res;
+
+			res = stream.consume("]");
+			if(res) return res;
+
+
+			sub.arr = std::make_unique<Expression>(std::move(out));
+			sub.text = {start,stream.marker()};
+			out.inner = std::move(sub);
 			
 			continue;
 		}

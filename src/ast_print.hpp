@@ -52,6 +52,17 @@ inline void print_expression(const Expression& exp, int indent, bool show_text) 
             print_expression(*arg.b, indent + 1, show_text);
             print_text(arg, indent + 1, show_text);
         }
+        else if constexpr (std::is_same_v<T, SubScript>) {
+            ind(); std::cout << "SubScript:\n";
+
+            ind(); std::cout << " Array:\n";
+            print_expression(*arg.arr, indent + 2, show_text);
+
+            ind(); std::cout << " Index:\n";
+            print_expression(*arg.idx, indent + 2, show_text);
+
+            print_text(arg, indent + 1, show_text);
+        }
         else if constexpr (std::is_same_v<T, Call>) {
             ind(); std::cout << "Call:\n";
             ind(); std::cout << "  func:\n";

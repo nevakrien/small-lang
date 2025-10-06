@@ -19,9 +19,9 @@ int main() {
     std::cout << "Tip: Type code normally; a blank line commits and parses it.\n\n";
 
     enum class Mode { Expr, Stmt, Global };
-    Mode mode = Mode::Stmt;
+    Mode mode = Mode::Expr;
     bool show_text = false;
-    bool instant_mode = false;
+    bool instant_mode = true;
 
     std::string buffer;
     std::string line;
