@@ -11,6 +11,8 @@
 #include <charconv>
 #include <algorithm>
 
+#include "ast.hpp"
+
 namespace small_lang {
 
 static constexpr std::string_view keywords[] = {
@@ -39,191 +41,93 @@ struct Error {
 };
 
 
-enum class Operator {
-    Invalid,
-
-    // arithmetic
-    Plus, Minus, Star, Slash, Percent,
-
-    // comparison
-    Lt, Gt, Le, Ge, EqEq, NotEq,
-
-    // logical
-    AndAnd, OrOr, Not,
-
-    // bitwise
-    BitAnd, BitOr, BitXor,
-
-    // assignment and increment
-    Assign, PlusPlus, MinusMinus,
-
-    // misc / extended
-    Arrow,Dot,
-
-    // Paren,Bracket,//opened
-
-
-};
-typedef unsigned int Bp;
 static constexpr Bp CALL_BP = 16;
 static constexpr Bp SUBSCRIPT_BP = 16;
 
 
-struct Op {
-    Operator kind = Operator::Invalid;
 
-    constexpr Op() = default;
-    constexpr Op(Operator k) : kind(k) {}
-
-    constexpr operator std::string_view() const noexcept {
-        switch (kind) {
-            case Operator::Plus:        return "+";
-            case Operator::Minus:       return "-";
-            case Operator::Star:        return "*";
-            case Operator::Slash:       return "/";
-            case Operator::Percent:     return "%";
-            case Operator::Lt:          return "<";
-            case Operator::Gt:          return ">";
-            case Operator::Le:          return "<=";
-            case Operator::Ge:          return ">=";
-            case Operator::EqEq:        return "==";
-            case Operator::NotEq:       return "!=";
-            case Operator::AndAnd:      return "&&";
-            case Operator::OrOr:        return "||";
-            case Operator::Not:         return "!";
-            case Operator::BitAnd:      return "&";
-            case Operator::BitOr:       return "|";
-            case Operator::BitXor:      return "^";
-            case Operator::Assign:      return "=";
-            case Operator::PlusPlus:    return "++";
-            case Operator::MinusMinus:  return "--";
-            case Operator::Arrow:       return "->";
-            case Operator::Dot:         return ".";
-            // case Operator::Paren:       return "(";
-            // case Operator::Bracket:     return "[";
-            default:                    return "<invalid>";
-        }
+constexpr Bp  Op::bp_prefix() const noexcept {
+    switch (kind) {
+        case Operator::Plus:        // unary +
+        case Operator::Minus:       // unary -
+        case Operator::Not:         // logical not
+        case Operator::BitAnd:      // address-of
+        case Operator::Star:        // deref
+        case Operator::PlusPlus:    // pre-increment
+        case Operator::MinusMinus:  // pre-decrement
+            return 16; // tight binding (C-style unary)
+        default:
+            return 0;   // not a prefix op
     }
-
-    constexpr explicit operator bool() const noexcept {
-        return kind != Operator::Invalid;
-    }
-
-        // comparison support for convenience
-    constexpr bool operator==(Operator k) const noexcept { return kind == k; }
-    constexpr bool operator!=(Operator k) const noexcept { return kind != k; }
-
-	constexpr Bp bp_prefix() const noexcept {
-	    switch (kind) {
-	        case Operator::Plus:        // unary +
-	        case Operator::Minus:       // unary -
-	        case Operator::Not:         // logical not
-	        case Operator::BitAnd:      // address-of
-	        case Operator::Star:        // deref
-	        case Operator::PlusPlus:    // pre-increment
-	        case Operator::MinusMinus:  // pre-decrement
-	            return 16; // tight binding (C-style unary)
-	        default:
-	            return 0;   // not a prefix op
-	    }
-	}
-
-	constexpr Bp bp_infix_left() const noexcept {
-	    switch (kind) {
-	        case Operator::Dot:
-	        case Operator::Arrow:       return 20;
-	        case Operator::Star:
-	        case Operator::Slash:
-	        case Operator::Percent:     return 14;
-	        case Operator::Plus:
-	        case Operator::Minus:       return 13;
-	        case Operator::Lt:
-	        case Operator::Gt:
-	        case Operator::Le:
-	        case Operator::Ge:          return 11;
-	        case Operator::EqEq:
-	        case Operator::NotEq:       return 10;
-	        case Operator::BitAnd:      return 9;
-	        case Operator::BitXor:      return 8;
-	        case Operator::BitOr:       return 7;
-	        case Operator::AndAnd:      return 6;
-	        case Operator::OrOr:        return 5;
-	        case Operator::Assign:      return 3;
-	        default:
-	            return 0;
-	    }
-	}
-
-	constexpr Bp bp_infix_right() const noexcept {
-	    switch (kind) {
-	        // left-associative ops use same as left
-	        case Operator::Dot:
-	        case Operator::Arrow:       return 20;
-	        case Operator::Star:
-	        case Operator::Slash:
-	        case Operator::Percent:     return 14;
-	        case Operator::Plus:
-	        case Operator::Minus:       return 13;
-	        case Operator::Lt:
-	        case Operator::Gt:
-	        case Operator::Le:
-	        case Operator::Ge:          return 11;
-	        case Operator::EqEq:
-	        case Operator::NotEq:       return 10;
-	        case Operator::BitAnd:      return 9;
-	        case Operator::BitXor:      return 8;
-	        case Operator::BitOr:       return 7;
-	        case Operator::AndAnd:      return 6;
-	        case Operator::OrOr:        return 5;
-
-	         // right-assoc
-	        case Operator::Assign:      return 4;
-	        default:
-	            return 0;
-	    }
-	}
-
-	constexpr Bp bp_postfix() const noexcept {
-	    switch (kind) {
-	    	// case Operator::Paren:
-            // case Operator::Bracket:     return 16;
-
-	        case Operator::PlusPlus:    
-	        case Operator::MinusMinus:  return 15;
-	        default:
-	            return 0;
-	    }
-	}
-
-
-
-};
-
-inline std::ostream& operator<<(std::ostream& os, const Op& op) {
-    return os << static_cast<std::string_view>(op);
 }
 
-
-//base class used for text things
-struct Token {
-	std::string_view text;//view of the original text (can do pointer arithmetic)
-	operator std::string_view() const noexcept {
-        return text;
+constexpr Bp  Op::bp_infix_left() const noexcept {
+    switch (kind) {
+        case Operator::Dot:
+        case Operator::Arrow:       return 20;
+        case Operator::Star:
+        case Operator::Slash:
+        case Operator::Percent:     return 14;
+        case Operator::Plus:
+        case Operator::Minus:       return 13;
+        case Operator::Lt:
+        case Operator::Gt:
+        case Operator::Le:
+        case Operator::Ge:          return 11;
+        case Operator::EqEq:
+        case Operator::NotEq:       return 10;
+        case Operator::BitAnd:      return 9;
+        case Operator::BitXor:      return 8;
+        case Operator::BitOr:       return 7;
+        case Operator::AndAnd:      return 6;
+        case Operator::OrOr:        return 5;
+        case Operator::Assign:      return 3;
+        default:
+            return 0;
     }
-};
+}
 
-struct Invalid : Token {};
+constexpr Bp  Op::bp_infix_right() const noexcept {
+    switch (kind) {
+        // left-associative ops use same as left
+        case Operator::Dot:
+        case Operator::Arrow:       return 20;
+        case Operator::Star:
+        case Operator::Slash:
+        case Operator::Percent:     return 14;
+        case Operator::Plus:
+        case Operator::Minus:       return 13;
+        case Operator::Lt:
+        case Operator::Gt:
+        case Operator::Le:
+        case Operator::Ge:          return 11;
+        case Operator::EqEq:
+        case Operator::NotEq:       return 10;
+        case Operator::BitAnd:      return 9;
+        case Operator::BitXor:      return 8;
+        case Operator::BitOr:       return 7;
+        case Operator::AndAnd:      return 6;
+        case Operator::OrOr:        return 5;
 
-struct Var : Token {
-	Var() = default;
-	Var(std::string_view name)  {
-		text=name;
-	}
-};
+         // right-assoc
+        case Operator::Assign:      return 4;
+        default:
+            return 0;
+    }
+}
 
-struct Num : Token {
-	uint64_t value;
-};
+constexpr Bp  Op::bp_postfix() const noexcept {
+    switch (kind) {
+    	// case Operator::Paren:
+        // case Operator::Bracket:     return 16;
+
+        case Operator::PlusPlus:    
+        case Operator::MinusMinus:  return 15;
+        default:
+            return 0;
+    }
+}
+
 
 struct ParseStream{
 	std::string_view full;
@@ -436,115 +340,6 @@ struct ParseStream{
 
 };
 
-struct Expression;
-
-
-
-struct PreOp : Token {
-    std::unique_ptr<Expression> exp;
-    Op op;
-
-    PreOp() = default;
-    PreOp(Op o) : op(o) {}
-    PreOp(Op o, Expression expr,std::string_view text);
-};
-
-
-struct BinOp : Token{
-	std::unique_ptr<Expression> a;
-	std::unique_ptr<Expression> b;
-	Op op;
-};
-
-struct SubScript : Token{
-	std::unique_ptr<Expression> arr;
-	std::unique_ptr<Expression> idx;
-};
-
-
-struct Call : Token{
-	std::unique_ptr<Expression> func;
-	std::vector<Expression> args;
-};
-
-using ExpressionVariant = std::variant<Invalid,Var,Num,PreOp,BinOp,SubScript,Call>;
-struct Expression {
-	ExpressionVariant inner;
-	Expression() = default;
-
-	 // construct from the variant directly
-    Expression(ExpressionVariant v)
-        : inner(std::move(v)) {}
-
-    // construct from any alternative type directly
-    template <typename T>
-    Expression(T&& value)
-        : inner(std::forward<T>(value)) {}
-
-	operator std::string_view() const noexcept {
-        return std::visit([](auto && arg){
-        	return (std::string_view)arg;
-        },inner);
-    }
-
-    // access the base Token reference
-    Token& tok() noexcept {
-        return std::visit([](auto& arg) -> Token& {
-            return static_cast<Token&>(arg);
-        }, inner);
-    }
-
-    const Token& tok() const noexcept {
-        return std::visit([](auto const& arg) -> const Token& {
-            return static_cast<const Token&>(arg);
-        }, inner);
-    }
-};
-
-PreOp::PreOp(Op o, Expression expr,std::string_view t)
-    : exp(std::make_unique<Expression>(std::move(expr))),
-      op(o) {
-      	text = t;
-      }
-
-
-struct Statement;
-
-struct Basic : Token {
-	Expression inner;
-};
-
-struct Return : Token {
-	Expression val;
-};
-
-struct Block : Token {
-	std::vector<Statement> parts;
-};
-
-struct CondStatement : Token {
-	Expression cond;
-	Block block;
-};
-
-struct While : CondStatement {};
-struct If : CondStatement {
-	Block else_part;
-};
-
-
-using statementVariant = std::variant<Invalid,While,If,Return,Block,Basic>;
-struct Statement {
-	statementVariant inner;
-	operator std::string_view() const noexcept {
-        return std::visit([](auto && arg){
-        	return (std::string_view)arg;
-        },inner);
-    }
-};
-
-
-
 
 inline Error parse_statement(ParseStream& stream,Statement& out);
 inline Error parse_expression(ParseStream& stream,Expression& exp,Bp min_bp = 0);
@@ -659,7 +454,7 @@ inline Error parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
 		if(stream.starts_with("[")){			
 			if(SUBSCRIPT_BP < min_bp) break;
 			stream.try_consume("[");
-			
+
 			SubScript sub;
 
 			sub.idx = std::make_unique<Expression>();

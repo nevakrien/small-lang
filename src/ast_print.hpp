@@ -1,6 +1,6 @@
 #pragma once
 
-#include "parser.hpp"
+#include "ast.hpp"
 #include <iostream>
 #include <string>
 
@@ -8,6 +8,39 @@ namespace small_lang {
 // ------------------------------------------------------------
 // Debug printing utilities
 // ------------------------------------------------------------
+constexpr Op::operator std::string_view() const noexcept {
+    switch (kind) {
+        case Operator::Plus:        return "+";
+        case Operator::Minus:       return "-";
+        case Operator::Star:        return "*";
+        case Operator::Slash:       return "/";
+        case Operator::Percent:     return "%";
+        case Operator::Lt:          return "<";
+        case Operator::Gt:          return ">";
+        case Operator::Le:          return "<=";
+        case Operator::Ge:          return ">=";
+        case Operator::EqEq:        return "==";
+        case Operator::NotEq:       return "!=";
+        case Operator::AndAnd:      return "&&";
+        case Operator::OrOr:        return "||";
+        case Operator::Not:         return "!";
+        case Operator::BitAnd:      return "&";
+        case Operator::BitOr:       return "|";
+        case Operator::BitXor:      return "^";
+        case Operator::Assign:      return "=";
+        case Operator::PlusPlus:    return "++";
+        case Operator::MinusMinus:  return "--";
+        case Operator::Arrow:       return "->";
+        case Operator::Dot:         return ".";
+        // case Operator::Paren:       return "(";
+        // case Operator::Bracket:     return "[";
+        default:                    return "<invalid>";
+    }
+}
+    
+inline std::ostream& operator<<(std::ostream& os, const Op& op) {
+    return os << static_cast<std::string_view>(op);
+}
 
 inline void print_expression(const Expression& exp, int indent = 0, bool show_text = false);
 
