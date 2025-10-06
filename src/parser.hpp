@@ -1,12 +1,9 @@
 #pragma once
 
-#include <string_view>
+
 #include <cctype>
 #include <cstring>
 #include <cassert>
-#include <variant>
-#include <vector>
-#include <memory>
 #include <format>
 #include <charconv>
 #include <algorithm>
@@ -25,12 +22,12 @@ static constexpr std::string_view keywords[] = {
 
 #define TODO assert(0 && "TODO");
 
-struct Error {
+struct ParseError {
     std::string message;
-    std::string_view context; //position in the input stream where we errored
+    std::string_view context; //position in the input stream where we ParseErrored
 
-    constexpr Error() = default;
-    constexpr Error(std::string_view msg, std::string_view ctx)
+    constexpr ParseError() = default;
+    constexpr ParseError(std::string_view msg, std::string_view ctx)
         : message(msg), context(ctx){}
 
     constexpr explicit operator bool() const noexcept {
@@ -185,14 +182,14 @@ struct ParseStream{
 		return true;
 	}
 
-	Error consume(std::string_view pre,std::string_view expected){
+	ParseError consume(std::string_view pre,std::string_view expected){
 		if(try_consume(pre))
-			return Error();
+			return ParseError();
 
-		return Error(std::format("expected {} found {}",expected,found_token()),current);
+		return ParseError(std::format("expected {} found {}",expected,found_token()),current);
 	}
 
-	Error consume(std::string_view pre){
+	ParseError consume(std::string_view pre){
 		return consume(pre,pre);
 	}
 
@@ -253,15 +250,15 @@ struct ParseStream{
 		return name;
 	}
 
-	Error consume_name(Var& name){
+	ParseError consume_name(Var& name){
 		return consume_name(name.text);
 	}
-	Error consume_name(std::string_view& name){
+	ParseError consume_name(std::string_view& name){
 		name = try_name();
 		if(!name.size())
-			return Error(std::format("expected NAME found {}",found_token()),current);
+			return ParseError(std::format("expected NAME found {}",found_token()),current);
 		else
-			return Error();
+			return ParseError();
 	}
 
 	Op peek_operator() {
@@ -341,30 +338,30 @@ struct ParseStream{
 };
 
 
-inline Error parse_statement(ParseStream& stream,Statement& out);
-inline Error parse_expression(ParseStream& stream,Expression& exp,Bp min_bp = 0);
+inline ParseError parse_statement(ParseStream& stream,Statement& out);
+inline ParseError parse_expression(ParseStream& stream,Expression& exp,Bp min_bp = 0);
 
 
-inline Error parse_atom(ParseStream& stream,Expression& out){
+inline ParseError parse_atom(ParseStream& stream,Expression& out){
 	stream.skip_whitespace();
 
 	Num n = stream.try_number();
 	if(n.text.size()){
 		out.inner = std::move(n);
-		return Error();
+		return ParseError();
 	}
 
 	auto name = stream.try_name();
 	if(name.size()){
 		out.inner = Var(name);
-		return Error();
+		return ParseError();
 	}
 
-	return Error(std::format("expected VALUE found {}\n",stream.found_token()),stream.current);
+	return ParseError(std::format("expected VALUE found {}\n",stream.found_token()),stream.current);
 }
 
-inline Error parse_paren_expression(ParseStream& stream,Expression& out){
-	Error res;
+inline ParseError parse_paren_expression(ParseStream& stream,Expression& out){
+	ParseError res;
 	
 	stream.skip_whitespace();
 	const char* start = stream.marker();
@@ -383,9 +380,9 @@ inline Error parse_paren_expression(ParseStream& stream,Expression& out){
 	return res;
 }
 
-inline Error parse_call_args(ParseStream& stream,Call& out){
+inline ParseError parse_call_args(ParseStream& stream,Call& out){
 	Expression tmp;
-	Error err;
+	ParseError err;
 
 	err=stream.consume("(");
 	if(err) return err;
@@ -393,7 +390,7 @@ inline Error parse_call_args(ParseStream& stream,Call& out){
 	//check for easy empty
 	
 	if(stream.try_consume(")"))
-		return Error();
+		return ParseError();
 	
 	err=parse_expression(stream,tmp);
 	if(err) return err;
@@ -414,8 +411,8 @@ inline Error parse_call_args(ParseStream& stream,Call& out){
 }
 
 //HEAVILY inspired by https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-inline Error parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
-	Error res;
+inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
+	ParseError res;
 	
 	stream.skip_whitespace();
 	const char* start = stream.marker();
@@ -504,13 +501,13 @@ inline Error parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
 
 	}
 
-	return Error();
+	return ParseError();
 }
 
 
 
-inline Error parse_proper_block(ParseStream& stream,Block& out){
-	Error res = Error();	
+inline ParseError parse_proper_block(ParseStream& stream,Block& out){
+	ParseError res = ParseError();	
 	stream.skip_whitespace();
 	const char* start = stream.marker();
 
@@ -526,7 +523,7 @@ inline Error parse_proper_block(ParseStream& stream,Block& out){
 		}
 
 		if(stream.empty()){
-			return Error("expected statement or '}' found EOF\n",stream.current);
+			return ParseError("expected statement or '}' found EOF\n",stream.current);
 		}
 
 		res=parse_statement(stream,stmt);
@@ -535,9 +532,9 @@ inline Error parse_proper_block(ParseStream& stream,Block& out){
 	}
 }
 
-inline Error parse_block(ParseStream& stream,Block& out){
+inline ParseError parse_block(ParseStream& stream,Block& out){
 	if(stream.try_consume(";",out)){
-		return Error();
+		return ParseError();
 	}
 
 	stream.skip_whitespace();
@@ -552,8 +549,8 @@ inline Error parse_block(ParseStream& stream,Block& out){
 }
 
 
-inline Error parse_statement(ParseStream& stream,Statement& out){
-	Error res;
+inline ParseError parse_statement(ParseStream& stream,Statement& out){
+	ParseError res;
 	stream.skip_whitespace();
 	const char* start = stream.marker();
 	
@@ -631,9 +628,9 @@ struct Global {
     }
 };
 
-inline Error parse_func_args(ParseStream& stream,FuncDec& out){
+inline ParseError parse_func_args(ParseStream& stream,FuncDec& out){
 	Var tmp;
-	Error err;
+	ParseError err;
 
 	err=stream.consume("(");
 	if(err) return err;
@@ -641,7 +638,7 @@ inline Error parse_func_args(ParseStream& stream,FuncDec& out){
 	//check for easy empty
 	
 	if(stream.try_consume(")"))
-		return Error();
+		return ParseError();
 	
 	err=stream.consume_name(tmp);
 	if(err) return err;
@@ -660,8 +657,8 @@ inline Error parse_func_args(ParseStream& stream,FuncDec& out){
 }
 
 
-inline Error parse_global(ParseStream& stream,Global& out){
-	Error res;
+inline ParseError parse_global(ParseStream& stream,Global& out){
+	ParseError res;
 	stream.skip_whitespace();
 	const char* start = stream.marker();
 

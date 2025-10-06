@@ -90,7 +90,7 @@ int main() {
 
         if (mode == Mode::Expr) {
             Expression exp;
-            Error err = parse_expression(stream, exp);
+            auto err = parse_expression(stream, exp);
             if (err) {
                 std::cout << "Error: " << err.what() << "\n";
                 if (show_text)
@@ -103,7 +103,7 @@ int main() {
         }
         else if (mode == Mode::Stmt) {
             Statement stmt;
-            Error err = parse_statement(stream, stmt);
+            auto err = parse_statement(stream, stmt);
             if (err) {
                 std::cout << "Error: " << err.what() << "\n";
                 if (show_text)
@@ -116,7 +116,7 @@ int main() {
         }
         else if (mode == Mode::Global) {
             Global g;
-            Error err = parse_global(stream, g);
+            auto err = parse_global(stream, g);
             if (err) {
                 std::cout << "Error: " << err.what() << "\n";
                 if (show_text)

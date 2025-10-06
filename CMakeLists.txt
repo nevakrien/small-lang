@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(small_lang LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Force clang++ toolchain (use the one that shipped with LLVM)
@@ -11,7 +11,7 @@ set(CMAKE_LINKER lld CACHE STRING "" FORCE)
 
 # Add libc++ flags — make sure to use both runtime and ABI
 add_compile_options(-stdlib=libc++ -Wall -Wextra)
-add_link_options(-stdlib=libc++ -lc++abi -fuse-ld=lld)
+add_link_options(-stdlib=libc++ -fuse-ld=lld)
 
 # --- LLVM setup ---
 find_package(LLVM REQUIRED CONFIG)
@@ -20,14 +20,13 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} at ${LLVM_DIR}")
 
 llvm_map_components_to_libnames(LLVM_LIBS
     core
-    support
-    irreader
-    executionengine
+    # support
+    # irreader
+    # executionengine
 )
 add_compile_definitions(PUBLIC ${LLVM_DEFINITIONS})
 link_libraries(${LLVM_LIBS})
-include_directories(PUBLIC ${LLVM_INCLUDE_DIRS})
-
+include_directories(SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
 
 
 # --- Sources
@@ -39,6 +38,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 include_directories(PUBLIC "${CMAKE_SOURCE_DIR}/src")
 
 add_executable(ast_repl ast_repl.cpp ${CORE_SOURCES})
+add_executable(test_compile test_compile.cpp)
 add_executable(gpt_test gpt_test.cpp)
 
 # include(FetchContent)

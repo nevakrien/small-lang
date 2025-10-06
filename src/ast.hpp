@@ -1,5 +1,10 @@
 #pragma once
 
+#include <string_view>
+#include <variant>
+#include <vector>
+#include <memory>
+
 namespace small_lang {
 
 //base class used for text things
@@ -67,15 +72,13 @@ struct Op {
     constexpr Bp bp_postfix() const noexcept;
 };
 
-struct Expression;
-
+struct Expression ;
 
 struct PreOp : Token {
     std::unique_ptr<Expression> exp;
     Op op;
 
     PreOp() = default;
-    PreOp(Op o) : op(o) {}
     PreOp(Op o, Expression expr,std::string_view text);
 };
 
@@ -136,7 +139,6 @@ PreOp::PreOp(Op o, Expression expr,std::string_view t)
       op(o) {
       	text = t;
       }
-
 
 struct Statement;
 
