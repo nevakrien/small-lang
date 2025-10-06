@@ -1,3 +1,5 @@
+#pragma once
+
 #include <string_view>
 #include <cctype>
 #include <cstring>
@@ -571,8 +573,11 @@ struct Condstatement : Token {
 	Block block;
 };
 
-struct If : Condstatement {};
 struct While : Condstatement {};
+struct If : Condstatement {
+	Block else_part;
+};
+
 
 using statementVariant = std::variant<Invalid,While,If,Return,Block,Basic>;
 struct statement {
@@ -637,8 +642,9 @@ inline Error parse_statement(ParseStream& stream,statement& out){
 	stream.skip_whitespace();
 	const char* start = stream.marker();
 	
-	auto parse_cond_stmt = [&stream,start,&res](Condstatement& handle){
-		res = parse_paren_expression(stream,handle.cond);
+	if(stream.try_consume("while")){
+		While& handle = out.inner.emplace<While>();
+		res = parse_expression(stream,handle.cond);
 		if(res) return res;
 
 		res = parse_block(stream,handle.block);
@@ -646,15 +652,22 @@ inline Error parse_statement(ParseStream& stream,statement& out){
 
 		handle.text = {start,stream.marker()};
 		return res;
-	};
-
-
-	if(stream.try_consume("if")){
-		return parse_cond_stmt(out.inner.emplace<If>());
 	}
 
-	if(stream.try_consume("while")){
-		return parse_cond_stmt(out.inner.emplace<While>());
+	if(stream.try_consume("if")){
+		If& handle = out.inner.emplace<If>();
+		res = parse_expression(stream,handle.cond);
+		if(res) return res;
+
+		res = parse_block(stream,handle.block);
+		if(res) return res;
+
+		if(stream.try_consume("else")){
+			res = parse_block(stream,handle.block);
+			handle.text = {start,stream.marker()};
+		}
+
+		return res;
 	}
 
 	if(stream.try_consume("return")){
@@ -683,201 +696,3 @@ inline Error parse_statement(ParseStream& stream,statement& out){
 
 }
 
-
-#include <iostream>
-#include <string>
-
-// ------------------------------------------------------------
-// Debug printing utilities
-// ------------------------------------------------------------
-
-inline void print_expression(const Expression& exp, int indent = 0, bool show_text = false);
-
-inline void print_text(const Token& tok, int indent, bool show_text) {
-    if (!show_text) return;
-    for (int i = 0; i < indent; i++) std::cout << "  ";
-    std::cout << "[text: \"" << tok.text << "\"]\n";
-}
-
-inline void print_expression(const Expression& exp, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-
-        if constexpr (std::is_same_v<T, Invalid>) {
-            ind(); std::cout << "Invalid\n";
-        }
-        else if constexpr (std::is_same_v<T, Var>) {
-            ind(); std::cout << "Var: " << arg.text << "\n";
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Num>) {
-		    ind();
-		    if (std::to_string(arg.value) == std::string(arg.text))
-		        std::cout << "Num: " << arg.text << "\n";
-		    else
-		        std::cout << "Num: " << arg.value << "\n";
-		    print_text(arg, indent + 1, show_text);
-		}
-
-        else if constexpr (std::is_same_v<T, PreOp>) {
-            ind(); std::cout << "PreOp: " << arg.op << "\n";
-            print_expression(*arg.exp, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, BinOp>) {
-            ind(); std::cout << "BinOp: " << arg.op << "\n";
-            print_expression(*arg.a, indent + 1, show_text);
-            print_expression(*arg.b, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Call>) {
-            ind(); std::cout << "Call:\n";
-            ind(); std::cout << "  func:\n";
-            print_expression(*arg.func, indent + 2, show_text);
-            if (!arg.args.empty()) {
-                ind(); std::cout << "  args:\n";
-                for (const auto& a : arg.args)
-                    print_expression(a, indent + 2, show_text);
-            }
-            print_text(arg, indent + 1, show_text);
-        }
-    }, exp.inner);
-}
-
-inline void print_statement(const statement& stmt, int indent = 0, bool show_text = false);
-
-inline void print_block(const Block& blk, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    ind(); std::cout << "Block:\n";
-    for (const auto& s : blk.parts)
-        print_statement(s, indent + 1, show_text);
-    print_text(blk, indent + 1, show_text);
-}
-
-inline void print_statement(const statement& stmt, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-
-        if constexpr (std::is_same_v<T, Invalid>) {
-            ind(); std::cout << "Invalid Statement\n";
-        }
-        else if constexpr (std::is_same_v<T, Return>) {
-            ind(); std::cout << "Return:\n";
-            print_expression(arg.val, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Block>) {
-            print_block(arg, indent, show_text);
-        }
-        else if constexpr (std::is_same_v<T, If>) {
-            ind(); std::cout << "If:\n";
-            ind(); std::cout << "  cond:\n";
-            print_expression(arg.cond, indent + 2, show_text);
-            ind(); std::cout << "  body:\n";
-            print_block(arg.block, indent + 2, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, While>) {
-            ind(); std::cout << "While:\n";
-            ind(); std::cout << "  cond:\n";
-            print_expression(arg.cond, indent + 2, show_text);
-            ind(); std::cout << "  body:\n";
-            print_block(arg.block, indent + 2, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Basic>) {
-            ind(); std::cout << "Basic Statement:\n";
-            print_expression(arg.inner, indent + 2, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-    }, stmt.inner);
-}
-
-// int main(){
-// 	std::string_view input = "-3;";
-// 	ParseStream stream{input, input};
-//     Expression exp;
-//     Error err = parse_expression(stream, exp);
-// 	return 0;
-// }
-
-// ------------------------------------------------------------
-// Simple REPL
-// ------------------------------------------------------------
-
-int main() {
-    std::cout << "Simple Parser REPL\n";
-    std::cout << "Commands:\n";
-    std::cout << "  :e <expr>  - Parse expression\n";
-    std::cout << "  :s <stmt>  - Parse statement\n";
-    std::cout << "  :t         - Toggle printing node text ranges\n";
-    std::cout << "  :q         - Quit\n\n";
-
-    bool show_text = false;
-    std::string line;
-
-    while (true) {
-        std::cout << "> ";
-        if (!std::getline(std::cin, line)) break;
-        if (line.empty()) continue;
-
-        if (line == ":q" || line == "quit" || line == "exit") break;
-        if (line == ":t" || line == ":text") {
-            show_text = !show_text;
-            std::cout << "Node text display " << (show_text ? "ON" : "OFF") << ".\n";
-            continue;
-        }
-
-        bool expr_mode = line.starts_with(":e ");
-        bool stmt_mode = line.starts_with(":s ");
-        std::string_view input = line;
-
-        if (expr_mode || stmt_mode) input.remove_prefix(3);
-
-        if (expr_mode) {
-            ParseStream stream{input, input};
-            Expression exp;
-            Error err = parse_expression(stream, exp);
-
-            if (err) {
-                std::cout << "Error: " << err.what() << "\n";
-                if (show_text)
-                    std::cout << "At: " << err.context << "\n";
-            } else {
-                std::cout << "Parsed expression:\n";
-                print_expression(exp, 0, show_text);
-                std::cout << "Text: \"" << (std::string_view)exp << "\"\n";
-            }
-        } else {
-            ParseStream stream{input, input};
-            statement stmt;
-            Error err = parse_statement(stream, stmt);
-
-            if (err) {
-                std::cout << "Error: " << err.what() << "\n";
-                if (show_text)
-                    std::cout << "At: " << err.context << "\n";
-            } else {
-                std::cout << "Parsed statement:\n";
-                print_statement(stmt, 0, show_text);
-                std::cout << "Text: \"" << (std::string_view)stmt << "\"\n";
-            }
-        }
-
-        std::cout << "\n";
-    }
-
-    std::cout << "Bye!\n";
-    return 0;
-}
