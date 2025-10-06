@@ -11,10 +11,14 @@
 #include <charconv>
 #include <algorithm>
 
+namespace small_lang {
+
 static constexpr std::string_view keywords[] = {
     "if", "else", "for", "while", "return",
+    "fn", "cfn",
+    //not used but like comeon
     "break", "continue", "true", "false",
-    "fn", "let", "const", "struct"
+    "let", "const", "struct"
 };
 
 #define TODO assert(0 && "TODO");
@@ -140,6 +144,7 @@ struct Token {
 struct Invalid : Token {};
 
 struct Var : Token {
+	Var() = default;
 	Var(std::string_view name)  {
 		text=name;
 	}
@@ -273,6 +278,9 @@ struct ParseStream{
 		return name;
 	}
 
+	Error consume_name(Var& name){
+		return consume_name(name.text);
+	}
 	Error consume_name(std::string_view& name){
 		name = try_name();
 		if(!name.size())
@@ -577,7 +585,7 @@ inline Error parse_expression(ParseStream& stream,Expression& out){
 	return res;
 }
 
-struct statement;
+struct Statement;
 
 struct Basic : Token {
 	Expression inner;
@@ -588,22 +596,22 @@ struct Return : Token {
 };
 
 struct Block : Token {
-	std::vector<statement> parts;
+	std::vector<Statement> parts;
 };
 
-struct Condstatement : Token {
+struct CondStatement : Token {
 	Expression cond;
 	Block block;
 };
 
-struct While : Condstatement {};
-struct If : Condstatement {
+struct While : CondStatement {};
+struct If : CondStatement {
 	Block else_part;
 };
 
 
 using statementVariant = std::variant<Invalid,While,If,Return,Block,Basic>;
-struct statement {
+struct Statement {
 	statementVariant inner;
 	operator std::string_view() const noexcept {
         return std::visit([](auto && arg){
@@ -615,7 +623,7 @@ struct statement {
 
 
 
-inline Error parse_statement(ParseStream& stream,statement& out);
+inline Error parse_statement(ParseStream& stream,Statement& out);
 
 inline Error parse_proper_block(ParseStream& stream,Block& out){
 	Error res = Error();	
@@ -625,7 +633,7 @@ inline Error parse_proper_block(ParseStream& stream,Block& out){
 	res = stream.consume("{");
 	if(res) return res;
 
-	statement stmt;
+	Statement stmt;
 	for(;;){
 		
 		if(stream.try_consume("}")){
@@ -652,7 +660,7 @@ inline Error parse_block(ParseStream& stream,Block& out){
 	if(stream.starts_with("{"))
 		return parse_proper_block(stream,out);
 	
-	statement stmt;
+	Statement stmt;
 	auto res = parse_statement(stream,stmt);
 	if(res) return res;
 	out.parts.push_back(std::move(stmt));
@@ -660,7 +668,7 @@ inline Error parse_block(ParseStream& stream,Block& out){
 }
 
 
-inline Error parse_statement(ParseStream& stream,statement& out){
+inline Error parse_statement(ParseStream& stream,Statement& out){
 	Error res;
 	stream.skip_whitespace();
 	const char* start = stream.marker();
@@ -718,3 +726,96 @@ inline Error parse_statement(ParseStream& stream,statement& out){
 
 }
 
+//global scope
+struct FuncDec : Token {
+	bool is_c = false;
+	Var name;
+	std::vector<Var> args;
+};
+
+struct Function : FuncDec {
+	Block body;
+};
+
+using globalVariant = std::variant<Invalid,FuncDec,Function,Basic>;
+struct Global {
+	globalVariant inner;
+	operator std::string_view() const noexcept {
+        return std::visit([](auto && arg){
+        	return (std::string_view)arg;
+        },inner);
+    }
+};
+
+inline Error parse_func_args(ParseStream& stream,FuncDec& out){
+	Var tmp;
+	Error err;
+
+	err=stream.consume("(");
+	if(err) return err;
+
+	//check for easy empty
+	
+	if(stream.try_consume(")"))
+		return Error();
+	
+	err=stream.consume_name(tmp);
+	if(err) return err;
+	out.args.push_back(std::move(tmp));
+
+	
+	while(stream.try_consume(",")){
+		err=stream.consume_name(tmp);
+		if(err) return err;
+		out.args.push_back(std::move(tmp));
+
+		
+	}
+
+	return stream.consume(")");
+}
+
+
+inline Error parse_global(ParseStream& stream,Global& out){
+	Error res;
+	stream.skip_whitespace();
+	const char* start = stream.marker();
+
+	FuncDec sig;
+	sig.is_c = stream.try_consume("cfn");
+	
+	if(sig.is_c || stream.try_consume("fn")){
+		res = stream.consume_name(sig.name);
+		if(res) return res;
+
+		res = parse_func_args(stream,sig);
+		if(res) return res;
+
+
+		if(stream.try_consume(";")){
+			sig.text = { start, stream.marker() };
+			out.inner = std::move(sig);
+			return res;
+		}
+
+		Function& func = out.inner.emplace<Function>();
+		static_cast<FuncDec&>(func) = std::move(sig);
+
+		res = parse_proper_block(stream,func.body);
+		func.text = { start, stream.marker() };
+		return res;
+	}
+
+	Basic& handle = out.inner.emplace<Basic>();
+	res = parse_expression(stream, handle.inner);
+	if (res) return res;
+
+	res = stream.consume(";");
+	if (res) return res;
+
+	handle.text = { start, stream.marker() };
+	return res;
+
+}
+
+};//small_lang

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 
+namespace small_lang {
 // ------------------------------------------------------------
 // Debug printing utilities
 // ------------------------------------------------------------
@@ -65,7 +66,7 @@ inline void print_expression(const Expression& exp, int indent, bool show_text) 
     }, exp.inner);
 }
 
-inline void print_statement(const statement& stmt, int indent = 0, bool show_text = false);
+inline void print_statement(const Statement& stmt, int indent = 0, bool show_text = false);
 
 inline void print_block(const Block& blk, int indent, bool show_text) {
     auto ind = [indent]() {
@@ -78,7 +79,7 @@ inline void print_block(const Block& blk, int indent, bool show_text) {
     print_text(blk, indent + 1, show_text);
 }
 
-inline void print_statement(const statement& stmt, int indent, bool show_text) {
+inline void print_statement(const Statement& stmt, int indent, bool show_text) {
     auto ind = [indent]() {
         for (int i = 0; i < indent; i++) std::cout << "  ";
     };
@@ -121,3 +122,69 @@ inline void print_statement(const statement& stmt, int indent, bool show_text) {
     }, stmt.inner);
 }
 
+
+inline void print_global(const Global& g, int indent = 0, bool show_text = false);
+
+inline void print_funcdec(const FuncDec& fd, int indent, bool show_text) {
+    auto ind = [indent]() {
+        for (int i = 0; i < indent; i++) std::cout << "  ";
+    };
+
+    ind(); std::cout << (fd.is_c ? "C-FuncDec: " : "FuncDec: ");
+    std::cout << fd.name.text << "(";
+
+    for (size_t i = 0; i < fd.args.size(); i++) {
+        std::cout << fd.args[i].text;
+        if (i + 1 < fd.args.size()) std::cout << ", ";
+    }
+
+    std::cout << ")\n";
+    print_text(fd, indent + 1, show_text);
+}
+
+inline void print_function(const Function& fn, int indent, bool show_text) {
+    auto ind = [indent]() {
+        for (int i = 0; i < indent; i++) std::cout << "  ";
+    };
+
+    ind(); std::cout << (fn.is_c ? "C-Function: " : "Function: ")
+    << fn.name.text << "(";
+
+    for (size_t i = 0; i < fn.args.size(); i++) {
+        std::cout << fn.args[i].text;
+        if (i + 1 < fn.args.size()) std::cout << ", ";
+    }
+
+    std::cout << ")\n";
+    ind(); std::cout << "  body:\n";
+    print_block(fn.body, indent + 2, show_text);
+    print_text(fn, indent + 1, show_text);
+}
+
+inline void print_global(const Global& g, int indent, bool show_text) {
+    auto ind = [indent]() {
+        for (int i = 0; i < indent; i++) std::cout << "  ";
+    };
+
+    std::visit([&](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+
+        if constexpr (std::is_same_v<T, Invalid>) {
+            ind(); std::cout << "Invalid Global\n";
+        }
+        else if constexpr (std::is_same_v<T, FuncDec>) {
+            print_funcdec(arg, indent, show_text);
+        }
+        else if constexpr (std::is_same_v<T, Function>) {
+            print_function(arg, indent, show_text);
+        }
+        else if constexpr (std::is_same_v<T, Basic>) {
+            ind(); std::cout << "Global Basic Statement:\n";
+            print_expression(arg.inner, indent + 1, show_text);
+            print_text(arg, indent + 1, show_text);
+        }
+    }, g.inner);
+}
+
+
+};//small_lang
