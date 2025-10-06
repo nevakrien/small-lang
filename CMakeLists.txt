@@ -1,27 +1,34 @@
 cmake_minimum_required(VERSION 3.20)
-project(small_lang LANGUAGES C CXX)
+project(small_lang LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Force clang++ toolchain (use the one that shipped with LLVM)
+set(CMAKE_C_COMPILER clang CACHE STRING "" FORCE)
+set(CMAKE_CXX_COMPILER clang++ CACHE STRING "" FORCE)
+set(CMAKE_LINKER lld CACHE STRING "" FORCE)
+
+# Add libc++ flags — make sure to use both runtime and ABI
+add_compile_options(-stdlib=libc++ -Wall -Wextra)
+add_link_options(-stdlib=libc++ -lc++abi -fuse-ld=lld)
+
+# --- LLVM setup ---
 find_package(LLVM REQUIRED CONFIG)
-# message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-# message(STATUS "LLVM includes: ${LLVM_INCLUDE_DIRS}")
-# message(STATUS "LLVM libs: ${LLVM_LIBRARIES}")
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} at ${LLVM_DIR}")
 
 
-function(add_default_setup target)
-    target_include_directories(${target}
-        PUBLIC
-            "${CMAKE_SOURCE_DIR}/src"
-    )
+llvm_map_components_to_libnames(LLVM_LIBS
+    core
+    support
+    irreader
+    executionengine
+)
+add_compile_definitions(PUBLIC ${LLVM_DEFINITIONS})
+link_libraries(${LLVM_LIBS})
+include_directories(PUBLIC ${LLVM_INCLUDE_DIRS})
 
-    if(MSVC)
-        target_compile_options(${target} PRIVATE /W3 /permissive-)
-    else()
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
-    endif()
-endfunction()
+
 
 # --- Sources
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
@@ -29,8 +36,10 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.c"
 )
 
+include_directories(PUBLIC "${CMAKE_SOURCE_DIR}/src")
+
 add_executable(ast_repl ast_repl.cpp ${CORE_SOURCES})
-add_default_setup(ast_repl)
+add_executable(gpt_test gpt_test.cpp)
 
 # include(FetchContent)
 # FetchContent_Declare(
