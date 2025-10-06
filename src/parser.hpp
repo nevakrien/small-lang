@@ -38,6 +38,7 @@ struct Error {
     std::string_view what() const noexcept { return message; }
 };
 
+
 enum class Operator {
     Invalid,
 
@@ -59,8 +60,14 @@ enum class Operator {
     // misc / extended
     Arrow,Dot,
 
+    // Paren,Bracket,//opened
+
 
 };
+typedef unsigned int Bp;
+static constexpr Bp CALL_BP = 16;
+
+
 struct Op {
     Operator kind = Operator::Invalid;
 
@@ -91,6 +98,8 @@ struct Op {
             case Operator::MinusMinus:  return "--";
             case Operator::Arrow:       return "->";
             case Operator::Dot:         return ".";
+            // case Operator::Paren:       return "(";
+            // case Operator::Bracket:     return "[";
             default:                    return "<invalid>";
         }
     }
@@ -99,38 +108,99 @@ struct Op {
         return kind != Operator::Invalid;
     }
 
-    constexpr int precedence() const noexcept {
+        // comparison support for convenience
+    constexpr bool operator==(Operator k) const noexcept { return kind == k; }
+    constexpr bool operator!=(Operator k) const noexcept { return kind != k; }
+
+	constexpr Bp bp_prefix() const noexcept {
 	    switch (kind) {
-	        case Operator::Assign: return 1;
-	        case Operator::OrOr:   return 2;
-	        case Operator::AndAnd: return 3;
-	        case Operator::EqEq:
-	        case Operator::NotEq:  return 4;
+	        case Operator::Plus:        // unary +
+	        case Operator::Minus:       // unary -
+	        case Operator::Not:         // logical not
+	        case Operator::BitAnd:      // address-of
+	        case Operator::Star:        // deref
+	        case Operator::PlusPlus:    // pre-increment
+	        case Operator::MinusMinus:  // pre-decrement
+	            return 16; // tight binding (C-style unary)
+	        default:
+	            return 0;   // not a prefix op
+	    }
+	}
+
+	constexpr Bp bp_infix_left() const noexcept {
+	    switch (kind) {
+	        case Operator::Dot:
+	        case Operator::Arrow:       return 17;
+	        case Operator::Star:
+	        case Operator::Slash:
+	        case Operator::Percent:     return 14;
+	        case Operator::Plus:
+	        case Operator::Minus:       return 13;
 	        case Operator::Lt:
 	        case Operator::Gt:
 	        case Operator::Le:
-	        case Operator::Ge:     return 5;
-	        case Operator::Plus:
-	        case Operator::Minus:  return 6;
+	        case Operator::Ge:          return 11;
+	        case Operator::EqEq:
+	        case Operator::NotEq:       return 10;
+	        case Operator::BitAnd:      return 9;
+	        case Operator::BitXor:      return 8;
+	        case Operator::BitOr:       return 7;
+	        case Operator::AndAnd:      return 6;
+	        case Operator::OrOr:        return 5;
+	        case Operator::Assign:      return 3;
+	        default:
+	            return 0;
+	    }
+	}
+
+	constexpr Bp bp_infix_right() const noexcept {
+	    switch (kind) {
+	        // left-associative ops use same as left
+	        case Operator::Dot:
+	        case Operator::Arrow:       return 17;
 	        case Operator::Star:
 	        case Operator::Slash:
-	        case Operator::Percent:return 7;
-	        case Operator::Arrow:
-	        case Operator::Dot:    return 8;
-	        default:               return 0;
+	        case Operator::Percent:     return 14;
+	        case Operator::Plus:
+	        case Operator::Minus:       return 13;
+	        case Operator::Lt:
+	        case Operator::Gt:
+	        case Operator::Le:
+	        case Operator::Ge:          return 11;
+	        case Operator::EqEq:
+	        case Operator::NotEq:       return 10;
+	        case Operator::BitAnd:      return 9;
+	        case Operator::BitXor:      return 8;
+	        case Operator::BitOr:       return 7;
+	        case Operator::AndAnd:      return 6;
+	        case Operator::OrOr:        return 5;
+
+	         // right-assoc
+	        case Operator::Assign:      return 4;
+	        default:
+	            return 0;
+	    }
+	}
+
+	constexpr Bp bp_postfix() const noexcept {
+	    switch (kind) {
+	    	// case Operator::Paren:
+            // case Operator::Bracket:     return 16;
+
+	        case Operator::PlusPlus:    
+	        case Operator::MinusMinus:  return 15;
+	        default:
+	            return 0;
 	    }
 	}
 
 
-    //associativity
-    constexpr bool right_assoc() const noexcept {
-        return kind == Operator::Assign;
-    }
 
-    // comparison support for convenience
-    constexpr bool operator==(Operator k) const noexcept { return kind == k; }
-    constexpr bool operator!=(Operator k) const noexcept { return kind != k; }
 };
+
+inline std::ostream& operator<<(std::ostream& os, const Op& op) {
+    return os << static_cast<std::string_view>(op);
+}
 
 
 //base class used for text things
@@ -289,40 +359,50 @@ struct ParseStream{
 			return Error();
 	}
 
-	Op try_operator() {
+	Op peek_operator() {
 	    skip_whitespace();
 	    if (current.empty())
 	        return {};
 
-	    // Try longest operators first — order matters!
-	    if (try_consume("++")) return Op(Operator::PlusPlus);
-	    if (try_consume("--")) return Op(Operator::MinusMinus);
-	    if (try_consume("->")) return Op(Operator::Arrow);
-	    if (try_consume("&&")) return Op(Operator::AndAnd);
-	    if (try_consume("||")) return Op(Operator::OrOr);
-	    if (try_consume("==")) return Op(Operator::EqEq);
-	    if (try_consume("!=")) return Op(Operator::NotEq);
-	    if (try_consume("<=")) return Op(Operator::Le);
-	    if (try_consume(">=")) return Op(Operator::Ge);
+	    // Longest operators first
+	    if (starts_with("++")) return Op(Operator::PlusPlus);
+	    if (starts_with("--")) return Op(Operator::MinusMinus);
+	    if (starts_with("->")) return Op(Operator::Arrow);
+	    if (starts_with("&&")) return Op(Operator::AndAnd);
+	    if (starts_with("||")) return Op(Operator::OrOr);
+	    if (starts_with("==")) return Op(Operator::EqEq);
+	    if (starts_with("!=")) return Op(Operator::NotEq);
+	    if (starts_with("<=")) return Op(Operator::Le);
+	    if (starts_with(">=")) return Op(Operator::Ge);
 
-	    // Then all single-character operators
-	    if (try_consume("+")) return Op(Operator::Plus);
-	    if (try_consume("-")) return Op(Operator::Minus);
-	    if (try_consume("*")) return Op(Operator::Star);
-	    if (try_consume("/")) return Op(Operator::Slash);
-	    if (try_consume("%")) return Op(Operator::Percent);
-	    if (try_consume(".")) return Op(Operator::Dot);
-	    if (try_consume("&")) return Op(Operator::BitAnd);
-	    if (try_consume("|")) return Op(Operator::BitOr);
-	    if (try_consume("^")) return Op(Operator::BitXor);
-	    if (try_consume("!")) return Op(Operator::Not);
-	    if (try_consume("=")) return Op(Operator::Assign);
-	    if (try_consume("<")) return Op(Operator::Lt);
-	    if (try_consume(">")) return Op(Operator::Gt);
+	    // Single-character operators
+	    if (starts_with("+")) return Op(Operator::Plus);
+	    if (starts_with("-")) return Op(Operator::Minus);
+	    if (starts_with("*")) return Op(Operator::Star);
+	    if (starts_with("/")) return Op(Operator::Slash);
+	    if (starts_with("%")) return Op(Operator::Percent);
+	    if (starts_with(".")) return Op(Operator::Dot);
+	    if (starts_with("&")) return Op(Operator::BitAnd);
+	    if (starts_with("|")) return Op(Operator::BitOr);
+	    if (starts_with("^")) return Op(Operator::BitXor);
+	    if (starts_with("!")) return Op(Operator::Not);
+	    if (starts_with("=")) return Op(Operator::Assign);
+	    if (starts_with("<")) return Op(Operator::Lt);
+	    if (starts_with(">")) return Op(Operator::Gt);
 
-	    // Nothing matched
 	    return {};
 	}
+
+	Op try_operator() {
+	    skip_whitespace();
+	    const Op op = peek_operator();
+	    if (!op) return {};
+
+	    // Consume actual characters based on the matched operator text
+	    advance(static_cast<std::string_view>(op).size());
+	    return op;
+	}
+
 
 
 
@@ -361,18 +441,18 @@ struct Expression;
 
 struct PreOp : Token {
     std::unique_ptr<Expression> exp;
-    std::string_view op;
+    Op op;
 
     PreOp() = default;
-    PreOp(std::string_view o) : op(o) {}
-    PreOp(std::string_view o, Expression expr);
+    PreOp(Op o) : op(o) {}
+    PreOp(Op o, Expression expr,std::string_view text);
 };
 
 
 struct BinOp : Token{
 	std::unique_ptr<Expression> a;
 	std::unique_ptr<Expression> b;
-	std::string_view op;
+	Op op;
 };
 
 struct Call : Token{
@@ -414,176 +494,12 @@ struct Expression {
     }
 };
 
-PreOp::PreOp(std::string_view o, Expression expr)
+PreOp::PreOp(Op o, Expression expr,std::string_view t)
     : exp(std::make_unique<Expression>(std::move(expr))),
-      op(o) {}
+      op(o) {
+      	text = t;
+      }
 
-
-
-inline Error parse_expression(ParseStream& stream,Expression& exp);
-
-inline Error parse_call_args(ParseStream& stream,Call& out){
-	Expression tmp;
-	Error err;
-
-	err=stream.consume("(");
-	if(err) return err;
-
-	//check for easy empty
-	
-	if(stream.try_consume(")"))
-		return Error();
-	
-	err=parse_expression(stream,tmp);
-	if(err) return err;
-	out.args.push_back(std::move(tmp));
-
-	
-	while(stream.try_consume(",")){
-		
-		
-		err=parse_expression(stream,tmp);
-		if(err) return err;
-		out.args.push_back(std::move(tmp));
-
-		
-	}
-
-	return stream.consume(")");
-}
-
-
-inline Error parse_paren_expression(ParseStream& stream,Expression& out){
-	Error res;
-	
-	stream.skip_whitespace();
-	const char* start = stream.marker();
-
-	res = stream.consume("(");
-	if(res) return res;
-
-	res = parse_expression(stream,out);
-	if(res) return res;
-	
-	
-	res =  stream.consume(")");
-	if(res) return res;
-
-	out.tok().text = {start,stream.marker()};
-	return res;
-}
-
-inline Error parse_atom(ParseStream& stream,Expression& out){
-	if(stream.starts_with("("))
-		return parse_paren_expression(stream,out);
-
-	Num n = stream.try_number();
-	if(n.text.size()){
-		out.inner = Invalid{};
-		out.inner = std::move(n);
-		return Error();
-	}
-
-	auto name = stream.try_name();
-	if(name.size()){
-		out.inner = Var(name);
-		return Error();
-	}
-
-	return Error(std::format("expected VALUE found {}\n",stream.found_token()),stream.current);
-}
-
-inline Error parse_pres_and_atom(ParseStream& stream,Expression& out){
-	stream.skip_whitespace();
-	const char* start = stream.marker();
-	auto pre_op = stream.try_operator(); 
-
-	if(!pre_op)
-		return parse_atom(stream,out);
-
-	PreOp& handle = out.inner.emplace<PreOp>(pre_op);
-	handle.exp=std::make_unique<Expression>();//we need the mem
-	Error res = parse_pres_and_atom(stream,*handle.exp);
-	handle.text = {start,stream.current.data()};
-
-	return res;
-}
-
-inline Error parse_expression_core(ParseStream& stream,Expression& out){
-	stream.skip_whitespace();
-	const char* start = stream.marker();
-
-	Error res = parse_pres_and_atom(stream,out);
-	if(res) return res;
-
-
-	auto op = stream.try_operator();
-	if(!op)
-		return Error();
-
-	struct LHS {
-		Op op;
-		Expression exp ;
-	};
-
-	std::vector<LHS> parts;
-	parts.emplace_back(LHS{
-		op,
-	    std::move(out)
-	});
-
-	auto collapse_ops = [&](int prec_limit) {
-	    while (parts.size() >= 2 && parts.back().op.precedence() >= prec_limit) {
-	        auto rhs = std::move(parts.back().exp);
-	        auto op  = parts.back().op;
-	        parts.pop_back();
-
-	        auto& lhs = parts.back().exp;
-
-	        BinOp bin;
-	        bin.a  = std::make_unique<Expression>(std::move(lhs));
-	        bin.b  = std::make_unique<Expression>(std::move(rhs));
-	        bin.op = op;
-	        lhs.inner = std::move(bin);
-	    }
-	};
-
-
-	for (; op; op = stream.try_operator()) {
-	    Expression right;
-	    res = parse_pres_and_atom(stream, right);
-	    if (res) return res;
-
-	    int prec = op.precedence();
-
-	    collapse_ops(prec);
-	    parts.emplace_back(LHS{ op,std::move(right) });
-	}
-
-	collapse_ops(-1024);
-	out = std::move(parts.front().exp);
-
-	out.tok().text = {start,stream.marker()};
-	return res;
-}
-
-inline Error parse_expression(ParseStream& stream,Expression& out){
-	Error res = parse_expression_core(stream,out);
-	if(res) return res;
-
-	const char* start = out.tok().text.begin();
-	while(stream.starts_with("(")){
-		Call call;
-		call.func = std::make_unique<Expression>(std::move(out));
-		res = parse_call_args(stream,call);
-		if(res) return res;
-
-		call.text = {start,stream.marker()};
-		out.inner = std::move(call);
-	}
-
-	return res;
-}
 
 struct Statement;
 
@@ -624,6 +540,152 @@ struct Statement {
 
 
 inline Error parse_statement(ParseStream& stream,Statement& out);
+inline Error parse_expression(ParseStream& stream,Expression& exp,Bp min_bp = 0);
+
+
+inline Error parse_atom(ParseStream& stream,Expression& out){
+	stream.skip_whitespace();
+
+	Num n = stream.try_number();
+	if(n.text.size()){
+		out.inner = Invalid{};
+		out.inner = std::move(n);
+		return Error();
+	}
+
+	auto name = stream.try_name();
+	if(name.size()){
+		out.inner = Var(name);
+		return Error();
+	}
+
+	return Error(std::format("expected VALUE found {}\n",stream.found_token()),stream.current);
+}
+
+inline Error parse_paren_expression(ParseStream& stream,Expression& out){
+	Error res;
+	
+	stream.skip_whitespace();
+	const char* start = stream.marker();
+
+	res =  stream.consume("(");
+	if(res) return res;
+
+	res = parse_expression(stream,out);
+	if(res) return res;
+	
+	
+	res =  stream.consume(")");
+	if(res) return res;
+
+	out.tok().text = {start,stream.marker()};
+	return res;
+}
+
+inline Error parse_call_args(ParseStream& stream,Call& out){
+	Expression tmp;
+	Error err;
+
+	err=stream.consume("(");
+	if(err) return err;
+
+	//check for easy empty
+	
+	if(stream.try_consume(")"))
+		return Error();
+	
+	err=parse_expression(stream,tmp);
+	if(err) return err;
+	out.args.push_back(std::move(tmp));
+
+	
+	while(stream.try_consume(",")){
+		
+		
+		err=parse_expression(stream,tmp);
+		if(err) return err;
+		out.args.push_back(std::move(tmp));
+
+		
+	}
+
+	return stream.consume(")");
+}
+
+//HEAVILY inspired by https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+inline Error parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
+	Error res;
+	
+	stream.skip_whitespace();
+	const char* start = stream.marker();
+
+	//recursively get the start
+	Op op = stream.try_operator();
+	if(op){
+		res = parse_expression(stream,out,op.bp_prefix());
+		if(res) return res;
+		out.inner = PreOp(op,std::move(out),{start,stream.marker()});
+	}
+	else if(stream.starts_with("(")){
+		res = parse_paren_expression(stream,out);
+		if(res) return res;
+	}else{
+		res = parse_atom(stream,out);
+		if(res) return res;
+	}
+
+
+	for(;;){
+		stream.skip_whitespace();
+		if(stream.starts_with("(")){
+			if(CALL_BP < min_bp) break;
+			Call call;
+			res = parse_call_args(stream,call);
+			if(res) return res;
+
+			call.func = std::make_unique<Expression>(std::move(out));
+			call.text = {start,stream.marker()};
+			out.inner = std::move(call);
+			
+			continue;
+		}
+
+		op = stream.peek_operator();
+		if(!op) break;
+
+		Bp b = op.bp_postfix();
+		if(b){
+			if(b<min_bp) break;
+			stream.try_operator();//skip the operator
+			out.inner = PreOp(op,std::move(out),{start,stream.marker()});
+
+			continue;
+		}
+
+		Bp lbp = op.bp_infix_left();
+		if(!lbp || lbp<min_bp) break;
+		stream.try_operator();
+
+
+
+		
+		BinOp bin;
+		bin.op = op;
+		bin.b = std::make_unique<Expression>();
+		res = parse_expression(stream,*bin.b,op.bp_infix_right());
+		if(res) return res;
+
+		bin.a = std::make_unique<Expression>(std::move(out));
+		bin.text = {start,stream.marker()};
+
+		out.inner = std::move(bin);
+
+	}
+
+	return Error();
+}
+
+
 
 inline Error parse_proper_block(ParseStream& stream,Block& out){
 	Error res = Error();	
