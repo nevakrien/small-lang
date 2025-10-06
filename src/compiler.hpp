@@ -10,25 +10,37 @@
 
 namespace small_lang {
 
-	struct CompileError{
-
+	struct MissingVar {
+		Var var;
 	};
 
-	class CompileContext {
-	public:
+	struct NonSenseOp {
+		const Expression& exp;
+	};
+
+	using CompileError = std::variant<MissingVar,NonSenseOp>;
+
+	using vresult_t = std::expected<llvm::Value*,CompileError>;
+	using result_t = std::expected<void,CompileError>;
+
+	struct CompileContext {
 	    CompileContext(std::string name)
 	        : ctx(),
 	          builder(ctx),
-	          mod(std::move(name), ctx)
+	          mod(std::move(name), ctx),
+	          int_type(llvm::Type::getInt64Ty(ctx))
 	    {}
 
-	    std::expected<llvm::Value*,CompileError> compile();
+	    vresult_t compile(const Expression& exp);
+	    result_t compile(const Statement& stmt);
+	    result_t compile(const Global& global);
 
-	private:
+
 	    llvm::LLVMContext ctx;
 	    llvm::IRBuilder<> builder;
 	    llvm::Module mod;
-	    std::map<std::string, llvm::Value*> namedValues;
-	};
+	    llvm::IntegerType* int_type;
+	    std::map<std::string_view, llvm::Value*> vars;
+};
 
 }//small_lang

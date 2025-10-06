@@ -7,6 +7,9 @@
 
 namespace small_lang {
 
+#define TODO assert(0 && "TODO");
+
+
 //base class used for text things
 struct Token {
 	std::string_view text;//view of the original text (can do pointer arithmetic)
@@ -78,8 +81,8 @@ struct PreOp : Token {
     std::unique_ptr<Expression> exp;
     Op op;
 
-    PreOp() = default;
-    PreOp(Op o, Expression expr,std::string_view text);
+    inline PreOp() = default;
+    inline PreOp(Op o, Expression expr,std::string_view text);
 };
 
 
@@ -134,7 +137,7 @@ struct Expression {
     }
 };
 
-PreOp::PreOp(Op o, Expression expr,std::string_view t)
+inline PreOp::PreOp(Op o, Expression expr,std::string_view t)
     : exp(std::make_unique<Expression>(std::move(expr))),
       op(o) {
       	text = t;
@@ -168,6 +171,28 @@ struct If : CondStatement {
 using statementVariant = std::variant<Invalid,While,If,Return,Block,Basic>;
 struct Statement {
 	statementVariant inner;
+	operator std::string_view() const noexcept {
+        return std::visit([](auto && arg){
+        	return (std::string_view)arg;
+        },inner);
+    }
+};
+
+
+//global scope
+struct FuncDec : Token {
+	bool is_c = false;
+	Var name;
+	std::vector<Var> args;
+};
+
+struct Function : FuncDec {
+	Block body;
+};
+
+using globalVariant = std::variant<Invalid,FuncDec,Function,Basic>;
+struct Global {
+	globalVariant inner;
 	operator std::string_view() const noexcept {
         return std::visit([](auto && arg){
         	return (std::string_view)arg;

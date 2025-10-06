@@ -20,7 +20,6 @@ static constexpr std::string_view keywords[] = {
     "let", "const", "struct"
 };
 
-#define TODO assert(0 && "TODO");
 
 struct ParseError {
     std::string message;
@@ -607,26 +606,6 @@ inline ParseError parse_statement(ParseStream& stream,Statement& out){
 
 }
 
-//global scope
-struct FuncDec : Token {
-	bool is_c = false;
-	Var name;
-	std::vector<Var> args;
-};
-
-struct Function : FuncDec {
-	Block body;
-};
-
-using globalVariant = std::variant<Invalid,FuncDec,Function,Basic>;
-struct Global {
-	globalVariant inner;
-	operator std::string_view() const noexcept {
-        return std::visit([](auto && arg){
-        	return (std::string_view)arg;
-        },inner);
-    }
-};
 
 inline ParseError parse_func_args(ParseStream& stream,FuncDec& out){
 	Var tmp;
