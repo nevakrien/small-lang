@@ -11,6 +11,12 @@
 #include <charconv>
 #include <algorithm>
 
+static constexpr std::string_view keywords[] = {
+    "if", "else", "for", "while", "return",
+    "break", "continue", "true", "false",
+    "fn", "let", "const", "struct"
+};
+
 #define TODO assert(0 && "TODO");
 
 struct Error {
@@ -199,11 +205,15 @@ struct ParseStream{
 		return true;
 	}
 
-	Error consume(std::string_view pre){
+	Error consume(std::string_view pre,std::string_view expected){
 		if(try_consume(pre))
 			return Error();
 
-		return Error(std::format("expected {} found {}",pre,found_token()),current);
+		return Error(std::format("expected {} found {}",expected,found_token()),current);
+	}
+
+	Error consume(std::string_view pre){
+		return consume(pre,pre);
 	}
 
 	std::string_view found_token(){
@@ -213,6 +223,11 @@ struct ParseStream{
 		if(current.empty()){
 			current = backup;
 			return "EOF";
+		}
+
+		for(auto e : keywords){
+			if(current.starts_with(e))
+				return e;
 		}
 
 		std::string_view ans = try_name();
@@ -247,7 +262,15 @@ struct ParseStream{
 			current.remove_prefix(1);
 		}
 
-		return {base,current.data()};
+		std::string_view name{base,current.data()};
+		for (auto kw : keywords) {
+	        if (kw == name){
+	        	current = {base,current.end()};
+	            return {}; // treat as no identifier
+	        }
+	    }
+
+		return name;
 	}
 
 	Error consume_name(std::string_view& name){
@@ -459,7 +482,7 @@ inline Error parse_atom(ParseStream& stream,Expression& out){
 		return Error();
 	}
 
-	return Error(std::format("expected a VALUE found {}\n",stream.found_token()),stream.current);
+	return Error(std::format("expected VALUE found {}\n",stream.found_token()),stream.current);
 }
 
 inline Error parse_pres_and_atom(ParseStream& stream,Expression& out){
@@ -676,8 +699,7 @@ inline Error parse_statement(ParseStream& stream,statement& out){
 		if(res) return res;
 
 		
-		res = stream.consume(";");
-		if(res) return res;
+		stream.try_consume(";");
 
 		handle.text = {start,stream.marker()};
 		return res;
