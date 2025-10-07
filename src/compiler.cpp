@@ -53,8 +53,22 @@ struct ExpressionVisitor {
        	return  std::unexpected(MissingVar{v});       	
     } 
 
-    vresult_t operator()(const PreOp&) const {
-        TODO
+    vresult_t operator()(const PreOp& pre_op) const {
+        vresult_t ra = ctx.compile(*pre_op.exp);
+    	if(!ra) return ra;
+    	llvm::Value *a = *ra;
+
+    	switch(pre_op.op.kind){
+    	case Operator::Not:{
+		    llvm::Value* zero = llvm::ConstantInt::get(a->getType(), 0);
+		    return ctx.builder.CreateICmpEQ(a, zero, "logical_not");
+		}
+		case Operator::Invalid:
+    		throw std::invalid_argument("uninit preop expression");
+    		break;
+    	default:
+    		TODO
+    	};
     }
 
     vresult_t operator()(const BinOp& bin_op) const {

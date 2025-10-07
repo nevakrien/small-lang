@@ -11,11 +11,9 @@ int main() {
     std::cout << "=== Small-Lang test ===\n";
 
     std::string_view src = R"(
+        cfn abs(a);
         cfn main() {
-        	a = 1&&0;
-        	b = 1 + 2;
-        	b = a;
-        	return b;
+        	return abs(1);
         }
     )";
     //  std::string_view src = R"(

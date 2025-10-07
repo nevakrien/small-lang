@@ -1,0 +1,4 @@
+cfn abs(a);
+cfn main() {
+	return abs(1);
+}

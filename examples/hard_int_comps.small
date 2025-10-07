@@ -1,0 +1,6 @@
+cfn main() {
+        a = !1&&0;
+        b = a==1;
+        b = a==b;
+        return b;
+}

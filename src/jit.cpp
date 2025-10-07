@@ -47,11 +47,17 @@ static void optimize_module(llvm::Module& mod) {
 // ------------------------------------------------------------
 static int run_jit(CompileContext& ctx, const RunOptions& opt) {
     auto jitExp = llvm::orc::LLJITBuilder().create();
+
     if (!jitExp) {
         llvm::errs() << toString(jitExp.takeError()) << "\n";
         return 1;
     }
     auto jit = std::move(*jitExp);
+    auto& dylib = jit->getMainJITDylib();
+        dylib.addGenerator(
+            cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+                jit->getDataLayout().getGlobalPrefix()))
+        );
 
     llvm::orc::ThreadSafeModule tsm(std::move(ctx.mod), std::move(ctx.ctx));
     if (auto err = jit->addIRModule(std::move(tsm))) {
@@ -85,6 +91,7 @@ static int run_jit(CompileContext& ctx, const RunOptions& opt) {
 int compile_source(std::string_view src, const RunOptions& opt) {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
 
     ParseStream stream(src);
     CompileContext ctx("jit_test");

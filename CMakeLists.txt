@@ -54,8 +54,8 @@ add_executable(ast_repl ast_repl.cpp)
 target_link_libraries(test_compile PRIVATE small_lang)
 
 
-add_executable(sml sml.cpp)
-target_link_libraries(sml PRIVATE small_lang)
+add_executable(small small.cpp)
+target_link_libraries(small PRIVATE small_lang)
 
 
 
