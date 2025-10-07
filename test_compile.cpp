@@ -11,15 +11,11 @@ int main() {
     std::cout << "=== Small-Lang test ===\n";
 
     std::string_view src = R"(
-        fn helper(a) {
-            return a;
-        }
-
         cfn main() {
-        	f = helper;
-            a = 1+f(helper(0));
-            a = a + a;
-            return a;
+        	a = 1&&0;
+        	b = 1 + 2;
+        	b = a;
+        	return b;
         }
     )";
     //  std::string_view src = R"(

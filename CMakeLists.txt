@@ -30,7 +30,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
 )
 
 
-  link_libraries(${LLVM_LIBS})
+link_libraries(${LLVM_LIBS})
 
 
 # --- Sources
@@ -41,10 +41,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 
 include_directories(PUBLIC "${CMAKE_SOURCE_DIR}/src")
 
-# add_executable(ast_repl ast_repl.cpp ${CORE_SOURCES})
 
-
-# add_executable(test_compile test_compile.cpp ${CORE_SOURCES})
 
 add_library(small_lang SHARED ${CORE_SOURCES})
 find_library(ZSTD_SHARED_LIB zstd REQUIRED)
@@ -52,6 +49,15 @@ target_link_libraries(small_lang PRIVATE ${ZSTD_SHARED_LIB})
 
 add_executable(test_compile test_compile.cpp)
 target_link_libraries(test_compile PRIVATE small_lang)
+
+add_executable(ast_repl ast_repl.cpp)
+target_link_libraries(test_compile PRIVATE small_lang)
+
+
+add_executable(sml sml.cpp)
+target_link_libraries(sml PRIVATE small_lang)
+
+
 
 
 # include(FetchContent)

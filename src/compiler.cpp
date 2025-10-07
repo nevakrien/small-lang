@@ -7,6 +7,35 @@ namespace small_lang {
 struct ExpressionVisitor {
     CompileContext& ctx;
 
+    vresult_t to_bool(llvm::Value* val) const{
+	    llvm::Type* ty = val->getType();
+
+	    if (ty->isIntegerTy()) {
+	        llvm::Value* zero = llvm::ConstantInt::get(ty, 0);
+	        return ctx.builder.CreateICmpNE(val, zero, "tobool");
+	    }
+
+	    if (ty->isFloatingPointTy()) {
+	        llvm::Value* zero = llvm::ConstantFP::get(ty, 0.0);
+	        return ctx.builder.CreateFCmpONE(val, zero, "tobool");
+	    }
+
+	    if (ty->isPointerTy()) {
+	        llvm::Value* null = llvm::ConstantPointerNull::get(
+	            llvm::cast<llvm::PointerType>(ty));
+	        return ctx.builder.CreateICmpNE(val, null, "tobool");
+	    }
+
+	    return  std::unexpected(CantBool{val->getType()});
+	}
+
+	llvm::Value* int_to_bool(llvm::Value* val) const{
+	    // Compare val != 0  → returns i1
+	    llvm::Value* zero = llvm::ConstantInt::get(val->getType(), 0);
+	    return ctx.builder.CreateICmpNE(val, zero, "tobool");
+	}
+
+
     vresult_t operator()(const Invalid&) const {
         throw std::invalid_argument("uninit expression");
     }
@@ -85,6 +114,12 @@ struct ExpressionVisitor {
         case Operator::NotEq:
             return ctx.builder.CreateICmpNE(a, b);
 
+        //logical
+        case Operator::AndAnd:
+		    return ctx.builder.CreateAnd(int_to_bool(a), int_to_bool(b), "andtmp");
+		case Operator::OrOr:
+		    return ctx.builder.CreateOr(int_to_bool(a), int_to_bool(b), "ortmp");
+
         // bitwise
         case Operator::BitAnd:
             return ctx.builder.CreateAnd(a, b);
@@ -96,10 +131,26 @@ struct ExpressionVisitor {
 
     	case Operator::Assign:{
     		llvm::Value* ptr = nullptr;
+    		llvm::Type*  dest_ty = nullptr;
+
 		    if (auto* load = llvm::dyn_cast<llvm::LoadInst>(a)) {
 		        ptr = load->getPointerOperand();
+		        dest_ty = load->getType();
 		    } else {
 		    	TODO
+		    }
+		    llvm::Type* src_ty = b->getType();
+
+		    if (dest_ty != src_ty) {
+		        if (dest_ty->isIntegerTy() && src_ty->isIntegerTy()) {
+		            b = ctx.builder.CreateIntCast(b, dest_ty, /*isSigned=*/true, "assign_intcast");
+		        } else if (dest_ty->isFloatingPointTy() && src_ty->isIntegerTy()) {
+		            b = ctx.builder.CreateSIToFP(b, dest_ty, "assign_sitofp");
+		        } else if (dest_ty->isIntegerTy() && src_ty->isFloatingPointTy()) {
+		            b = ctx.builder.CreateFPToSI(b, dest_ty, "assign_fptosi");
+		        } else {
+		            return std::unexpected(BadType{bin_op,dest_ty,src_ty});
+		        }
 		    }
 
 		    ctx.builder.CreateStore(b, ptr);

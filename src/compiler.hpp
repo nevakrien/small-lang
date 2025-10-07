@@ -23,14 +23,18 @@ namespace small_lang {
 	    llvm::Type* got;
 	};
 
+	struct CantBool {
+	    llvm::Type* got;
+	};
+
 	struct WrongArgCount {
 	    const Call& call;
 	    llvm::FunctionType* t;//can give count
 	};
 
-
+	template <typename T>
 	struct BadType {
-		const Expression& made;
+	    const T& made;
 	    llvm::Type* expected;
 	    llvm::Type* got;
 	};
@@ -38,7 +42,7 @@ namespace small_lang {
 	
 	struct StatmentError;
 
-	using CompileError = std::variant<MissingVar,NotAFunction,BadType,WrongArgCount,StatmentError>;
+	using CompileError = std::variant<MissingVar,NotAFunction,CantBool,BadType<Expression>,BadType<BinOp>,WrongArgCount,StatmentError>;
 	struct StatmentError {
 		const Statement& parent;
 		std::unique_ptr<CompileError> source;

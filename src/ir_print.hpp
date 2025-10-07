@@ -36,6 +36,13 @@ inline std::ostream& operator<<(std::ostream& os, const NotAFunction& e) {
     return os;
 }
 
+inline std::ostream& operator<<(std::ostream& os, const CantBool& e) {
+    os << "CantBool:\n"
+       << "  got type: " << to_string(e.got) << "\n";
+    return os;
+}
+
+
 inline std::ostream& operator<<(std::ostream& os, const WrongArgCount& e) {
     os << "WrongArgCount:\n"
        << "  call: " << e.call << "\n";
@@ -46,7 +53,8 @@ inline std::ostream& operator<<(std::ostream& os, const WrongArgCount& e) {
     return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const BadType& e) {
+template <typename T>
+inline std::ostream& operator<<(std::ostream& os, const BadType<T>& e) {
     os << "BadType:\n"
        << "  made: " << e.made << "\n"
        << "  expected: " << to_string(e.expected) << "\n"
