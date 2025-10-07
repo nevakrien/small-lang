@@ -17,8 +17,11 @@ int main() {
 
     // --- 2. Input code
     std::string_view src = R"(
+    	fn helper(a){
+    		return a;
+    	}
         cfn main() {
-            return 0;
+            return helper(0);
         }
     )";
 
@@ -26,6 +29,12 @@ int main() {
 
     // --- 3. Parse
     ParseStream stream(src);
+    Global helper;
+    if (auto err = parse_global(stream, helper); err) {
+        std::cerr << "[parser error] " << err.what() << "\n";
+        return 1;
+    }
+
     Global global;
     if (auto err = parse_global(stream, global); err) {
         std::cerr << "[parser error] " << err.what() << "\n";
@@ -36,6 +45,12 @@ int main() {
 
     // --- 4. Compile to LLVM IR
     CompileContext ctx("jit_test");
+    auto cresh = ctx.compile(helper);
+    if (!cresh) {
+        std::cerr << "[compile error]\n";
+        return 1;
+    }
+
     auto cres = ctx.compile(global);
     if (!cres) {
         std::cerr << "[compile error]\n";

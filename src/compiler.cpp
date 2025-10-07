@@ -16,9 +16,10 @@ struct ExpressionVisitor {
     }
 
     vresult_t operator()(const Var& v) const {
-       	auto it = ctx.vars.find(v.text);
-       	if(it != ctx.vars.end())
-       		return it->second;
+       	if (auto it = ctx.vars.find(v.text); it != ctx.vars.end())
+	        return ctx.builder.CreateLoad(it->second->getAllocatedType(), it->second, v.text);
+	    if (auto it = ctx.consts.find(v.text); it != ctx.consts.end())
+	        return it->second;
 
        	return  std::unexpected(MissingVar{v});       	
     } 
@@ -35,9 +36,46 @@ struct ExpressionVisitor {
         TODO
     }
 
-    vresult_t operator()(const Call&) const {
-        TODO
-    }
+	vresult_t operator()(const Call& c) const {
+	    // compile the function expression
+	    vresult_t r = ctx.compile(*c.func);
+	    if (!r) return r;
+
+	    llvm::Function* fn = llvm::dyn_cast<llvm::Function>(*r);
+	    if (!fn)
+	        return std::unexpected(NotAFunction{*c.func, (*r)->getType()});
+
+	    llvm::FunctionType* fnty = fn->getFunctionType();
+
+	   	// check argument count
+	    if (fnty->getNumParams() != c.args.size())
+	        return std::unexpected(WrongArgCount{c, fnty});
+
+
+	    // compile arguments
+	    std::vector<llvm::Value*> args;
+	    args.reserve(c.args.size());
+	    for (auto& arg : c.args) {
+	        vresult_t v = ctx.compile(arg);
+	        if (!v) return v;
+	        args.push_back(*v);
+	    }
+
+
+	    // check argument types
+	    for (size_t i = 0; i < fnty->getNumParams(); ++i) {
+	        llvm::Type* expected = fnty->getParamType(i);
+	        llvm::Type* got = args[i]->getType();
+	        if (expected != got)
+	            return std::unexpected(BadType{c.args[i], expected, got});
+	    }
+
+	    // all good, emit call
+	    return ctx.builder.CreateCall(fnty, fn, args, "function call");
+	}
+
+
+
 };
 
 vresult_t CompileContext::compile(const Expression& exp) {
@@ -72,7 +110,7 @@ struct StatmentVisitor {
     result_t operator()(const Block& b) const {
         for(auto it =b.parts.begin();it!=b.parts.end();it++){
 			result_t r = ctx.compile(*it);
-			if(r) return r;
+			if(!r) return r;
 		}
 
 		return {};
@@ -110,6 +148,8 @@ struct GlobalVisitor {
     	if(dec.is_c)
 			fn->setCallingConv(llvm::CallingConv::C);
 
+		ctx.consts[dec.name.text] = fn;
+
 		return fn;
 	}
 
@@ -128,9 +168,25 @@ struct GlobalVisitor {
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(*ctx.ctx, "entry", fn);
 		ctx.builder.SetInsertPoint(entry);
 
+
+		ctx.vars.clear();
+
+		auto it = f.args.begin();
+		for (llvm::Argument &arg : fn->args()) {
+		    llvm::AllocaInst* slot =
+		        ctx.builder.CreateAlloca(ctx.int_type, nullptr, it->text);
+
+		    ctx.builder.CreateStore(&arg, slot);
+		    ctx.vars[it->text] = slot;
+		    ++it;
+		}
+
+		assert(it == f.args.end());
+
+
 		for(auto it =f.body.parts.begin();it!=f.body.parts.end();it++){
 			result_t r = ctx.compile(*it);
-			if(r) return r;
+			if(!r) return r;
 		}
 
 		if(f.body.parts.empty() || !std::holds_alternative<Return>(f.body.parts.back().inner))

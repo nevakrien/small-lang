@@ -9,20 +9,42 @@
 
 #include "ast.hpp"
 
+
+
+
 namespace small_lang {
 
 	struct MissingVar {
 		Var var;
 	};
 
-	struct NonSenseOp {
-		const Expression& exp;
+	struct NotAFunction {
+	    const Expression& exp;
+	    llvm::Type* got;
 	};
 
-	using CompileError = std::variant<MissingVar,NonSenseOp>;
+	struct WrongArgCount {
+	    const Call& call;
+	    llvm::FunctionType* t;//can give count
+	};
+
+
+	struct BadType {
+		const Expression& made;
+	    llvm::Type* expected;
+	    llvm::Type* got;
+	};
+
+	using CompileError = std::variant<MissingVar,NotAFunction,BadType,WrongArgCount>;
 
 	using vresult_t = std::expected<llvm::Value*,CompileError>;
 	using result_t = std::expected<void,CompileError>;
+
+	using VarEntry = std::variant<
+	    llvm::AllocaInst*,     // stack-allocated variable
+	    llvm::GlobalVariable*, // global
+	    llvm::Value*           // direct LLVM value (const, func, etc.)
+	>;
 
 	struct CompileContext {
 	    CompileContext(std::string name)
@@ -42,7 +64,8 @@ namespace small_lang {
 
 	    llvm::IRBuilder<> builder;
 	    llvm::IntegerType* int_type;
-	    std::map<std::string_view, llvm::Value*> vars;
+	    std::map<std::string_view, llvm::AllocaInst*> vars;
+	    std::map<std::string_view, llvm::Value*> consts;
 };
 
 }//small_lang
