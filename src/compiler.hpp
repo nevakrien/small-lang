@@ -35,7 +35,21 @@ namespace small_lang {
 	    llvm::Type* got;
 	};
 
-	using CompileError = std::variant<MissingVar,NotAFunction,BadType,WrongArgCount>;
+	
+	struct StatmentError;
+
+	using CompileError = std::variant<MissingVar,NotAFunction,BadType,WrongArgCount,StatmentError>;
+	struct StatmentError {
+		const Statement& parent;
+		std::unique_ptr<CompileError> source;
+	};
+	// struct HeledCompilerError{
+	// 	std::unique_ptr<CompileError> inner;
+	// 	HeledCompilerError(CompileError e) : inner(std::make_unique<CompileError>(std::move(e))) {}
+	// 	const CompileError* get(){
+	// 		return *inner;
+	// 	}
+	// };
 
 	using vresult_t = std::expected<llvm::Value*,CompileError>;
 	using result_t = std::expected<void,CompileError>;

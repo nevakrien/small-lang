@@ -169,7 +169,8 @@ int main() {
         }
 
         cfn main() {
-            a = 1+helper(helper(0));
+        	f = helper;
+            a = 1+f(helper(0));
             a = a + a;
             return a;
         }

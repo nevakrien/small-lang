@@ -106,13 +106,20 @@ struct Call : Token{
 using ExpressionVariant = std::variant<Invalid,Var,Num,PreOp,BinOp,SubScript,Call>;
 struct Expression {
 	ExpressionVariant inner;
-	Expression() = default;
+	constexpr Expression() noexcept = default;
+
+
+    constexpr Expression(Expression&&) noexcept = default;
+	constexpr Expression& operator=(Expression&&) noexcept = default;
+
+
 
 	 // construct from the variant directly
     Expression(ExpressionVariant v)
         : inner(std::move(v)) {}
 
     // construct from any alternative type directly
+
     template <typename T>
     Expression(T&& value)
         : inner(std::forward<T>(value)) {}

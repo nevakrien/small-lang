@@ -31,10 +31,10 @@ struct ExpressionVisitor {
     vresult_t operator()(const BinOp& bin_op) const {
     	llvm::Value *a,*b;
 
-    	//auto mind specilization for degenracy
-    	if(bin_op.op.kind==Operator::Assign) if 
-    		(const auto var = std::get_if<Var>(&bin_op.a->inner))
-    		if (ctx.vars.find(var->text)==ctx.vars.end())
+    	//auto mint specilization for degenracy
+    	if(bin_op.op.kind==Operator::Assign) 
+    	if (const auto var = std::get_if<Var>(&bin_op.a->inner))
+    	if (ctx.vars.find(var->text)==ctx.vars.end())
     		{
 
     		vresult_t rb = ctx.compile(*bin_op.b);
@@ -50,6 +50,7 @@ struct ExpressionVisitor {
 	    	return b;
     	}
 
+    	//all operators have these semantics so we init here
     	vresult_t ra = ctx.compile(*bin_op.a);
     	if(!ra) return ra;
     	a = *ra;
@@ -152,7 +153,8 @@ struct StatmentVisitor {
     result_t operator()(const Return& r) const {
         vresult_t value = ctx.compile(r.val);
         if(!value) 
-        	return std::unexpected(value.error());
+        	return std::unexpected<CompileError>( std::move(value).error());
+        
 
         ctx.builder.CreateRet(*value);
         return {};
@@ -173,7 +175,10 @@ struct StatmentVisitor {
 };
 
 result_t CompileContext::compile(const Statement& stmt) {
-    return std::visit(StatmentVisitor{*this}, stmt.inner);
+    result_t r = std::visit(StatmentVisitor{*this}, stmt.inner);
+    if(r || std::holds_alternative<StatmentError>(r.error())) return r;
+
+    return std::unexpected(StatmentError{stmt,std::make_unique<CompileError>(std::move(r).error())});
 }
 
 

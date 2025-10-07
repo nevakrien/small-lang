@@ -21,6 +21,7 @@ inline std::string to_string(const llvm::Type* t) {
 // ============================================================
 // Error pretty-printing
 // ============================================================
+inline std::ostream& operator<<(std::ostream& os, const CompileError& err);
 
 inline std::ostream& operator<<(std::ostream& os, const MissingVar& e) {
     os << "MissingVar:\n"
@@ -50,6 +51,15 @@ inline std::ostream& operator<<(std::ostream& os, const BadType& e) {
        << "  made: " << e.made << "\n"
        << "  expected: " << to_string(e.expected) << "\n"
        << "  got: " << to_string(e.got) << "\n";
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const StatmentError& e) {
+    os << *e.source
+    << "inside of statment:\n"
+    << (std::string_view)e.parent <<"\n"
+
+    ;
     return os;
 }
 
