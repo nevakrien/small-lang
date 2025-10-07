@@ -64,13 +64,18 @@ struct StatmentVisitor {
         vresult_t value = ctx.compile(r.val);
         if(!value) 
         	return std::unexpected(value.error());
-        
+
         ctx.builder.CreateRet(*value);
         return {};
     }
 
-    result_t operator()(const Block&) const {
-        TODO
+    result_t operator()(const Block& b) const {
+        for(auto it =b.parts.begin();it!=b.parts.end();it++){
+			result_t r = ctx.compile(*it);
+			if(r) return r;
+		}
+
+		return {};
     }
 
     result_t operator()(const Basic& b) const {

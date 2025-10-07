@@ -557,6 +557,12 @@ inline ParseError parse_statement(ParseStream& stream,Statement& out){
 	stream.skip_whitespace();
 	const char* start = stream.marker();
 	
+	if(stream.starts_with("{")){
+		auto& b = out.inner.emplace<Block>();
+		return parse_proper_block(stream,b);
+	}
+
+
 	if(stream.try_consume("while")){
 		While& handle = out.inner.emplace<While>();
 		res = parse_expression(stream,handle.cond);
