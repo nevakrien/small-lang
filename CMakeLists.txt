@@ -4,12 +4,12 @@ project(small_lang LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# option(LLVM_MAKE_SHARED "Link LLVM dynamically (faster dev builds)" OFF)
 
 # Force clang++ toolchain (use the one that shipped with LLVM)
 set(CMAKE_C_COMPILER clang CACHE STRING "" FORCE)
 set(CMAKE_CXX_COMPILER clang++ CACHE STRING "" FORCE)
 set(CMAKE_LINKER lld CACHE STRING "" FORCE)
+
 
 # Add libc++ flags — make sure to use both runtime and ABI
 add_compile_options(-stdlib=libc++ -Wall -Wextra)
@@ -30,9 +30,43 @@ llvm_map_components_to_libnames(LLVM_LIBS
 )
 
 
-# if(NOT LLVM_MAKE_SHARED)
   link_libraries(${LLVM_LIBS})
-# else()
+
+
+# --- Sources
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/*.c"
+)
+
+include_directories(PUBLIC "${CMAKE_SOURCE_DIR}/src")
+
+# add_executable(ast_repl ast_repl.cpp ${CORE_SOURCES})
+
+
+# add_executable(test_compile test_compile.cpp ${CORE_SOURCES})
+
+add_library(small_lang SHARED ${CORE_SOURCES})
+find_library(ZSTD_SHARED_LIB zstd REQUIRED)
+target_link_libraries(small_lang PRIVATE ${ZSTD_SHARED_LIB})
+
+add_executable(test_compile test_compile.cpp)
+target_link_libraries(test_compile PRIVATE small_lang)
+
+
+# include(FetchContent)
+# FetchContent_Declare(
+#   replxx
+#   GIT_REPOSITORY https://github.com/AmokHuginnsson/replxx.git
+#   GIT_TAG master
+#   # GIT_TAG 1f149bfe20bf6e49c1afd4154eaf0032c8c2fda2
+# )
+# FetchContent_MakeAvailable(replxx)
+
+# target_link_libraries(ast_repl PRIVATE replxx)
+
+
+# if(LLVM_MAKE_SHARED)
   # message(STATUS "Forcing manual clang++ link to build libMY_LLVM.so")
 
   # # Expand LLVM_LIBS to absolute .a paths
@@ -70,28 +104,3 @@ llvm_map_components_to_libnames(LLVM_LIBS
 
   # link_libraries(MY_LLVM_SO)
 # endif()
-
-
-# --- Sources
-file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/*.c"
-)
-
-include_directories(PUBLIC "${CMAKE_SOURCE_DIR}/src")
-
-add_executable(ast_repl ast_repl.cpp ${CORE_SOURCES})
-add_executable(test_compile test_compile.cpp ${CORE_SOURCES})
-add_executable(gpt_test gpt_test.cpp)
-
-# include(FetchContent)
-# FetchContent_Declare(
-#   replxx
-#   GIT_REPOSITORY https://github.com/AmokHuginnsson/replxx.git
-#   GIT_TAG master
-#   # GIT_TAG 1f149bfe20bf6e49c1afd4154eaf0032c8c2fda2
-# )
-# FetchContent_MakeAvailable(replxx)
-
-# target_link_libraries(ast_repl PRIVATE replxx)
-

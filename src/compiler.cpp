@@ -62,6 +62,38 @@ struct ExpressionVisitor {
     	switch(bin_op.op.kind){
     	case Operator::Plus:
     		return ctx.builder.CreateAdd(a,b);//TODO we probably wana check types
+    	case Operator::Minus:
+            return ctx.builder.CreateSub(a, b);
+        case Operator::Star:
+            return ctx.builder.CreateMul(a, b);
+        case Operator::Slash:
+            return ctx.builder.CreateSDiv(a, b); // signed div for now
+        case Operator::Percent:
+            return ctx.builder.CreateSRem(a, b); // signed remainder
+
+        // comparison (integer)
+        case Operator::Lt:
+            return ctx.builder.CreateICmpSLT(a, b);
+        case Operator::Gt:
+            return ctx.builder.CreateICmpSGT(a, b);
+        case Operator::Le:
+            return ctx.builder.CreateICmpSLE(a, b);
+        case Operator::Ge:
+            return ctx.builder.CreateICmpSGE(a, b);
+        case Operator::EqEq:
+            return ctx.builder.CreateICmpEQ(a, b);
+        case Operator::NotEq:
+            return ctx.builder.CreateICmpNE(a, b);
+
+        // bitwise
+        case Operator::BitAnd:
+            return ctx.builder.CreateAnd(a, b);
+        case Operator::BitOr:
+            return ctx.builder.CreateOr(a, b);
+        case Operator::BitXor:
+            return ctx.builder.CreateXor(a, b);
+
+
     	case Operator::Assign:{
     		llvm::Value* ptr = nullptr;
 		    if (auto* load = llvm::dyn_cast<llvm::LoadInst>(a)) {
