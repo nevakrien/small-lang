@@ -7,6 +7,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
+
 #include <iostream>
 
 using namespace small_lang;
@@ -15,9 +16,9 @@ using namespace small_lang;
 // Run options
 // ------------------------------------------------------------
 struct RunOptions {
-    bool print_globals = true;
-    bool print_ir_pre  = true;   // print IR before optimization
-    bool print_ir_post = true;   // print IR after optimization
+    bool print_globals = false;
+    bool print_ir_pre  = false;   // print IR before optimization
+    bool print_ir_post = false;   // print IR after optimization
     bool verify_ir     = true;
     bool optimize_ir   = true;
     bool run_main      = true;
@@ -39,6 +40,10 @@ static void optimize_module(llvm::Module& mod) {
     pb.registerFunctionAnalyses(fam);
     pb.registerLoopAnalyses(lam);
     pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+
+    // ----------------------------------------------------------
+
 
     llvm::ModulePassManager mpm =
         pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
@@ -163,9 +168,14 @@ int main() {
         }
 
         cfn main() {
-            return helper(helper(0));
+            return 1+helper(helper(0));
         }
     )";
+    //  std::string_view src = R"(
+    //     cfn main() {
+    //         return 1+2;
+    //     }
+    // )";
 
     RunOptions opt;
     opt.print_globals = true;

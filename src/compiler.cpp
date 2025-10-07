@@ -28,8 +28,23 @@ struct ExpressionVisitor {
         TODO
     }
 
-    vresult_t operator()(const BinOp&) const {
-        TODO
+    vresult_t operator()(const BinOp& bin_op) const {
+    	vresult_t ra = ctx.compile(*bin_op.a);
+    	if(!ra) return ra;
+    	llvm::Value* a = *ra;
+
+    	vresult_t rb = ctx.compile(*bin_op.b);
+    	if(!rb) return rb;
+    	llvm::Value* b = *rb;
+
+    	switch(bin_op.op.kind){
+    	case Operator::Plus:
+    		return ctx.builder.CreateAdd(a,b);//TODO we probably wana check types
+    	case Operator::Invalid:
+    		throw std::invalid_argument("uninit binop expression");
+    	default:
+    		TODO
+    	}
     }
 
     vresult_t operator()(const SubScript&) const {
@@ -71,7 +86,9 @@ struct ExpressionVisitor {
 	    }
 
 	    // all good, emit call
-	    return ctx.builder.CreateCall(fnty, fn, args, "function call");
+	    llvm::CallInst* call = ctx.builder.CreateCall(fnty, fn, args, "function call");
+		call->setCallingConv(fn->getCallingConv());
+		return call;
 	}
 
 
@@ -145,8 +162,10 @@ struct GlobalVisitor {
 		    *ctx.mod
 		);
 
-    	if(dec.is_c)
-			fn->setCallingConv(llvm::CallingConv::C);
+    	if (dec.is_c)
+		    fn->setCallingConv(llvm::CallingConv::C);
+		else
+		    fn->setCallingConv(llvm::CallingConv::Fast);
 
 		ctx.consts[dec.name.text] = fn;
 
