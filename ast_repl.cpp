@@ -86,7 +86,7 @@ int main() {
             continue;
 
         std::string_view input = buffer;
-        ParseStream stream{input, input};
+        ParseStream stream(input);
 
         if (mode == Mode::Expr) {
             Expression exp;

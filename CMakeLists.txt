@@ -4,6 +4,8 @@ project(small_lang LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# option(LLVM_MAKE_SHARED "Link LLVM dynamically (faster dev builds)" OFF)
+
 # Force clang++ toolchain (use the one that shipped with LLVM)
 set(CMAKE_C_COMPILER clang CACHE STRING "" FORCE)
 set(CMAKE_CXX_COMPILER clang++ CACHE STRING "" FORCE)
@@ -17,16 +19,57 @@ add_link_options(-stdlib=libc++ -fuse-ld=lld)
 find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} at ${LLVM_DIR}")
 
+add_compile_definitions(PUBLIC ${LLVM_DEFINITIONS})
+include_directories(SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
 
 llvm_map_components_to_libnames(LLVM_LIBS
     core
-    # support
-    # irreader
-    # executionengine
+    orcjit
+    native
+    support
 )
-add_compile_definitions(PUBLIC ${LLVM_DEFINITIONS})
-link_libraries(${LLVM_LIBS})
-include_directories(SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
+
+
+# if(NOT LLVM_MAKE_SHARED)
+  link_libraries(${LLVM_LIBS})
+# else()
+  # message(STATUS "Forcing manual clang++ link to build libMY_LLVM.so")
+
+  # # Expand LLVM_LIBS to absolute .a paths
+  # set(LLVM_ARCHIVES "")
+  # foreach(lib IN LISTS LLVM_LIBS)
+  #   if(NOT IS_ABSOLUTE "${lib}")
+  #     list(APPEND LLVM_ARCHIVES "${LLVM_LIBRARY_DIR}/lib${lib}.a")
+  #   else()
+  #     list(APPEND LLVM_ARCHIVES "${lib}")
+  #   endif()
+  # endforeach()
+
+  # set(MY_LLVM_SO "${CMAKE_BINARY_DIR}/libMY_LLVM.so")
+
+  # add_custom_command(
+  #     OUTPUT ${MY_LLVM_SO}
+  #     COMMAND clang++ -fPIC -shared -o ${MY_LLVM_SO}
+  #             -Wl,--whole-archive
+  #             ${LLVM_ARCHIVES}
+  #             -Wl,--no-whole-archive
+  #             -Wl,--allow-multiple-definition
+  #             -fuse-ld=lld -rtlib=compiler-rt -nostdlib++
+  #             -lc++ -lc++abi -ldl -lm -lz -pthread
+  #     DEPENDS ${LLVM_ARCHIVES}
+  #     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+  #     COMMENT "Manually linking LLVM static libs into shared libMY_LLVM.so"
+  #     VERBATIM
+  # )
+
+  # add_custom_target(MY_LLVM DEPENDS ${MY_LLVM_SO})
+
+  # add_library(MY_LLVM_SO SHARED IMPORTED GLOBAL)
+  # set_target_properties(MY_LLVM_SO PROPERTIES IMPORTED_LOCATION ${MY_LLVM_SO})
+  # add_dependencies(MY_LLVM_SO MY_LLVM)
+
+  # link_libraries(MY_LLVM_SO)
+# endif()
 
 
 # --- Sources
@@ -38,7 +81,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 include_directories(PUBLIC "${CMAKE_SOURCE_DIR}/src")
 
 add_executable(ast_repl ast_repl.cpp ${CORE_SOURCES})
-add_executable(test_compile test_compile.cpp)
+add_executable(test_compile test_compile.cpp ${CORE_SOURCES})
 add_executable(gpt_test gpt_test.cpp)
 
 # include(FetchContent)

@@ -60,16 +60,21 @@ struct StatmentVisitor {
         TODO
     }
 
-    result_t operator()(const Return&) const {
-        TODO
+    result_t operator()(const Return& r) const {
+        vresult_t value = ctx.compile(r.val);
+        if(!value) 
+        	return std::unexpected(value.error());
+        
+        ctx.builder.CreateRet(*value);
+        return {};
     }
 
     result_t operator()(const Block&) const {
         TODO
     }
 
-    result_t operator()(const Basic&) const {
-        TODO
+    result_t operator()(const Basic& b) const {
+        return ctx.compile(b.inner).transform([](auto&&) {});
     }
 };
 
@@ -94,7 +99,7 @@ struct GlobalVisitor {
 		    sig,
 		    llvm::Function::ExternalLinkage,//we figure this later
 		    dec.name.text,
-		    ctx.mod
+		    *ctx.mod
 		);
 
     	if(dec.is_c)
@@ -115,7 +120,7 @@ struct GlobalVisitor {
 
     result_t operator()(const Function& f) const {
         llvm::Function* fn = generate_func(f);
-        llvm::BasicBlock* entry = llvm::BasicBlock::Create(ctx.ctx, "entry", fn);
+        llvm::BasicBlock* entry = llvm::BasicBlock::Create(*ctx.ctx, "entry", fn);
 		ctx.builder.SetInsertPoint(entry);
 
 		for(auto it =f.body.parts.begin();it!=f.body.parts.end();it++){

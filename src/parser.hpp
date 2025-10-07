@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "ast.hpp"
+#include "ast_print.hpp"
 
 namespace small_lang {
 
@@ -128,6 +129,9 @@ constexpr Bp  Op::bp_postfix() const noexcept {
 struct ParseStream{
 	std::string_view full;
 	std::string_view current;
+
+	ParseStream(std::string_view text) : full(text),current(text) {}
+
 
 	void advance(int amount){
 		current={current.data()+amount,current.size()-amount};

@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <expected>
+#include <memory>
 
 #include "ast.hpp"
 
@@ -25,10 +26,10 @@ namespace small_lang {
 
 	struct CompileContext {
 	    CompileContext(std::string name)
-	        : ctx(),
-	          builder(ctx),
-	          mod(std::move(name), ctx),
-	          int_type(llvm::Type::getInt64Ty(ctx))
+	        : ctx(std::make_unique<llvm::LLVMContext>()),
+	          mod(std::make_unique<llvm::Module>(std::move(name), *ctx)),
+	          builder(*ctx),
+	          int_type(llvm::Type::getInt64Ty(*ctx))
 	    {}
 
 	    vresult_t compile(const Expression& exp);
@@ -36,9 +37,10 @@ namespace small_lang {
 	    result_t compile(const Global& global);
 
 
-	    llvm::LLVMContext ctx;
+	    std::unique_ptr<llvm::LLVMContext> ctx;
+	    std::unique_ptr<llvm::Module> mod;
+
 	    llvm::IRBuilder<> builder;
-	    llvm::Module mod;
 	    llvm::IntegerType* int_type;
 	    std::map<std::string_view, llvm::Value*> vars;
 };
