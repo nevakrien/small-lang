@@ -12,18 +12,19 @@
 using namespace small_lang;
 
 // ------------------------------------------------------------
-// Run options (application layer config)
+// Run options
 // ------------------------------------------------------------
 struct RunOptions {
     bool print_globals = true;
-    bool print_ir      = true;
+    bool print_ir_pre  = true;   // print IR before optimization
+    bool print_ir_post = true;   // print IR after optimization
     bool verify_ir     = true;
     bool optimize_ir   = true;
     bool run_main      = true;
 };
 
 // ------------------------------------------------------------
-// Modern optimizer
+// Modern optimizer (O2 pipeline, includes mem2reg etc.)
 // ------------------------------------------------------------
 static void optimize_module(llvm::Module& mod) {
     llvm::PassBuilder pb;
@@ -39,7 +40,6 @@ static void optimize_module(llvm::Module& mod) {
     pb.registerLoopAnalyses(lam);
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    // Full standard O2 pipeline — includes mem2reg automatically
     llvm::ModulePassManager mpm =
         pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
 
@@ -47,7 +47,7 @@ static void optimize_module(llvm::Module& mod) {
 }
 
 // ------------------------------------------------------------
-// Helper: run the JIT and execute main()
+// Run the JIT and call main()
 // ------------------------------------------------------------
 static int run_jit(CompileContext& ctx, const RunOptions& opt) {
     auto jitExp = llvm::orc::LLJITBuilder().create();
@@ -110,24 +110,37 @@ static int compile_source(std::string_view src, const RunOptions& opt) {
             std::cerr << "[compile error]\n";
             return 1;
         }
-
-        std::cout << "[compiled]\n";
     }
 
+    // --- Pre-optimization IR ---
+    if (opt.print_ir_pre) {
+        std::cout << "\n[IR before optimization]\n";
+        ctx.mod->print(llvm::outs(), nullptr);
+        std::cout << "\n";
+    }
+
+    // --- Verify IR ---
     if (opt.verify_ir) {
-        if (llvm::verifyModule(*ctx.mod, &llvm::errs())) {
-            std::cerr << "[verify] module invalid!\n";
+        std::string verifyErrs;
+        llvm::raw_string_ostream os(verifyErrs);
+        if (llvm::verifyModule(*ctx.mod, &os)) {
+            std::cerr << "[verify] Module verification failed:\n"
+                      << os.str() << "\n";
+            std::cerr << "[IR dump for debugging]\n";
+            ctx.mod->print(llvm::errs(), nullptr);
             return 1;
         }
     }
 
+    // --- Optimization ---
     if (opt.optimize_ir) {
         optimize_module(*ctx.mod);
         std::cout << "[optimize] done\n";
     }
 
-    if (opt.print_ir) {
-        std::cout << "[IR dump]\n";
+    // --- Post-optimization IR ---
+    if (opt.print_ir_post) {
+        std::cout << "\n[IR after optimization]\n";
         ctx.mod->print(llvm::outs(), nullptr);
         std::cout << "\n";
     }
@@ -150,13 +163,14 @@ int main() {
         }
 
         cfn main() {
-            return helper(0);
+            return helper(helper(0));
         }
     )";
 
     RunOptions opt;
     opt.print_globals = true;
-    opt.print_ir      = true;
+    opt.print_ir_pre  = true;
+    opt.print_ir_post = true;
     opt.verify_ir     = true;
     opt.optimize_ir   = true;
     opt.run_main      = true;
