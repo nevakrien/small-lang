@@ -1,13 +1,13 @@
 #pragma once
-
 #include "ast.hpp"
 #include <iostream>
 #include <string>
 
 namespace small_lang {
-// ------------------------------------------------------------
-// Debug printing utilities
-// ------------------------------------------------------------
+
+// ============================================================
+// Op printing
+// ============================================================
 constexpr Op::operator std::string_view() const noexcept {
     switch (kind) {
         case Operator::Plus:        return "+";
@@ -32,203 +32,230 @@ constexpr Op::operator std::string_view() const noexcept {
         case Operator::MinusMinus:  return "--";
         case Operator::Arrow:       return "->";
         case Operator::Dot:         return ".";
-        // case Operator::Paren:       return "(";
-        // case Operator::Bracket:     return "[";
         default:                    return "<invalid>";
     }
 }
-    
+
 inline std::ostream& operator<<(std::ostream& os, const Op& op) {
     return os << static_cast<std::string_view>(op);
 }
 
-inline void print_expression(const Expression& exp, int indent = 0, bool show_text = false);
-
-inline void print_text(const Token& tok, int indent, bool show_text) {
+// ============================================================
+// Helper
+// ============================================================
+inline void print_token(std::ostream& os, const Token& tok, int indent, bool show_text) {
     if (!show_text) return;
-    for (int i = 0; i < indent; i++) std::cout << "  ";
-    std::cout << "[text: \"" << tok.text << "\"]\n";
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "[text: \"" << tok.text << "\"]\n";
 }
 
-inline void print_expression(const Expression& exp, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
+// ============================================================
+// Forward decls for stream_* functions (recursive core API)
+// ============================================================
+inline void stream(std::ostream&, const Expression&, int, bool);
+inline void stream(std::ostream&, const Statement&, int, bool);
+inline void stream(std::ostream&, const Block&, int, bool);
+inline void stream(std::ostream&, const Global&, int, bool);
 
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-
-        if constexpr (std::is_same_v<T, Invalid>) {
-            ind(); std::cout << "Invalid\n";
-        }
-        else if constexpr (std::is_same_v<T, Var>) {
-            ind(); std::cout << "Var: " << arg.text << "\n";
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Num>) {
-		    ind();
-		    if (std::to_string(arg.value) == std::string(arg.text))
-		        std::cout << "Num: " << arg.text << "\n";
-		    else
-		        std::cout << "Num: " << arg.value << "\n";
-		    print_text(arg, indent + 1, show_text);
-		}
-
-        else if constexpr (std::is_same_v<T, PreOp>) {
-            ind(); std::cout << "PreOp: " << arg.op << "\n";
-            print_expression(*arg.exp, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, BinOp>) {
-            ind(); std::cout << "BinOp: " << arg.op << "\n";
-            print_expression(*arg.a, indent + 1, show_text);
-            print_expression(*arg.b, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, SubScript>) {
-            ind(); std::cout << "SubScript:\n";
-
-            ind(); std::cout << " Array:\n";
-            print_expression(*arg.arr, indent + 2, show_text);
-
-            ind(); std::cout << " Index:\n";
-            print_expression(*arg.idx, indent + 2, show_text);
-
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Call>) {
-            ind(); std::cout << "Call:\n";
-            ind(); std::cout << "  func:\n";
-            print_expression(*arg.func, indent + 2, show_text);
-            if (!arg.args.empty()) {
-                ind(); std::cout << "  args:\n";
-                for (const auto& a : arg.args)
-                    print_expression(a, indent + 2, show_text);
-            }
-            print_text(arg, indent + 1, show_text);
-        }
-    }, exp.inner);
+// ============================================================
+// Individual AST node streaming
+// ============================================================
+inline void stream(std::ostream& os, const Invalid&, int indent, bool) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "Invalid\n";
 }
 
-inline void print_statement(const Statement& stmt, int indent = 0, bool show_text = false);
+inline void stream(std::ostream& os, const Var& v, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "Var: " << v.text << "\n";
+    print_token(os, v, indent + 1, show_text);
+}
 
-inline void print_block(const Block& blk, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
+inline void stream(std::ostream& os, const Num& n, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    if (std::to_string(n.value) == std::string(n.text))
+        os << "Num: " << n.text << "\n";
+    else
+        os << "Num: " << n.value << "\n";
+    print_token(os, n, indent + 1, show_text);
+}
 
-    ind(); std::cout << "Block:\n";
+inline void stream(std::ostream& os, const PreOp& p, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "PreOp: " << p.op << "\n";
+    stream(os, *p.exp, indent + 1, show_text);
+    print_token(os, p, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const BinOp& b, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "BinOp: " << b.op << "\n";
+    stream(os, *b.a, indent + 1, show_text);
+    stream(os, *b.b, indent + 1, show_text);
+    print_token(os, b, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const SubScript& s, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "SubScript:\n";
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << " Array:\n";
+    stream(os, *s.arr, indent + 2, show_text);
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << " Index:\n";
+    stream(os, *s.idx, indent + 2, show_text);
+    print_token(os, s, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const Call& c, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "Call:\n";
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "  func:\n";
+    stream(os, *c.func, indent + 2, show_text);
+    if (!c.args.empty()) {
+        for (int i = 0; i < indent; i++) os << "  ";
+        os << "  args:\n";
+        for (const auto& a : c.args)
+            stream(os, a, indent + 2, show_text);
+    }
+    print_token(os, c, indent + 1, show_text);
+}
+
+// ============================================================
+// Expression dispatcher
+// ============================================================
+inline void stream(std::ostream& os, const Expression& exp, int indent, bool show_text) {
+    std::visit([&](auto&& arg) { stream(os, arg, indent, show_text); }, exp.inner);
+}
+
+// ============================================================
+// Statements
+// ============================================================
+inline void stream(std::ostream& os, const Return& r, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "Return:\n";
+    stream(os, r.val, indent + 1, show_text);
+    print_token(os, r, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const If& i, int indent, bool show_text) {
+    for (int k = 0; k < indent; k++) os << "  ";
+    os << "If:\n";
+    for (int k = 0; k < indent; k++) os << "  ";
+    os << "  cond:\n";
+    stream(os, i.cond, indent + 2, show_text);
+    for (int k = 0; k < indent; k++) os << "  ";
+    os << "  body:\n";
+    stream(os, i.block, indent + 2, show_text);
+    print_token(os, i, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const While& w, int indent, bool show_text) {
+    for (int k = 0; k < indent; k++) os << "  ";
+    os << "While:\n";
+    for (int k = 0; k < indent; k++) os << "  ";
+    os << "  cond:\n";
+    stream(os, w.cond, indent + 2, show_text);
+    for (int k = 0; k < indent; k++) os << "  ";
+    os << "  body:\n";
+    stream(os, w.block, indent + 2, show_text);
+    print_token(os, w, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const Basic& b, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "Basic Statement:\n";
+    stream(os, b.inner, indent + 2, show_text);
+    print_token(os, b, indent + 1, show_text);
+}
+
+inline void stream(std::ostream& os, const Block& blk, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "Block:\n";
     for (const auto& s : blk.parts)
-        print_statement(s, indent + 1, show_text);
-    print_text(blk, indent + 1, show_text);
+        stream(os, s, indent + 1, show_text);
+    print_token(os, blk, indent + 1, show_text);
 }
 
-inline void print_statement(const Statement& stmt, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-
-        if constexpr (std::is_same_v<T, Invalid>) {
-            ind(); std::cout << "Invalid Statement\n";
-        }
-        else if constexpr (std::is_same_v<T, Return>) {
-            ind(); std::cout << "Return:\n";
-            print_expression(arg.val, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Block>) {
-            print_block(arg, indent, show_text);
-        }
-        else if constexpr (std::is_same_v<T, If>) {
-            ind(); std::cout << "If:\n";
-            ind(); std::cout << "  cond:\n";
-            print_expression(arg.cond, indent + 2, show_text);
-            ind(); std::cout << "  body:\n";
-            print_block(arg.block, indent + 2, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, While>) {
-            ind(); std::cout << "While:\n";
-            ind(); std::cout << "  cond:\n";
-            print_expression(arg.cond, indent + 2, show_text);
-            ind(); std::cout << "  body:\n";
-            print_block(arg.block, indent + 2, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Basic>) {
-            ind(); std::cout << "Basic Statement:\n";
-            print_expression(arg.inner, indent + 2, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-    }, stmt.inner);
+inline void stream(std::ostream& os, const Statement& stmt, int indent, bool show_text) {
+    std::visit([&](auto&& arg) { stream(os, arg, indent, show_text); }, stmt.inner);
 }
 
-
-inline void print_global(const Global& g, int indent = 0, bool show_text = false);
-
-inline void print_funcdec(const FuncDec& fd, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    ind(); std::cout << (fd.is_c ? "C-FuncDec: " : "FuncDec: ");
-    std::cout << fd.name.text << "(";
-
+// ============================================================
+// Functions and globals
+// ============================================================
+inline void stream(std::ostream& os, const FuncDec& fd, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << (fd.is_c ? "C-FuncDec: " : "FuncDec: ") << fd.name.text << "(";
     for (size_t i = 0; i < fd.args.size(); i++) {
-        std::cout << fd.args[i].text;
-        if (i + 1 < fd.args.size()) std::cout << ", ";
+        os << fd.args[i].text;
+        if (i + 1 < fd.args.size()) os << ", ";
     }
-
-    std::cout << ")\n";
-    print_text(fd, indent + 1, show_text);
+    os << ")\n";
+    print_token(os, fd, indent + 1, show_text);
 }
 
-inline void print_function(const Function& fn, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    ind(); std::cout << (fn.is_c ? "C-Function: " : "Function: ")
-    << fn.name.text << "(";
-
+inline void stream(std::ostream& os, const Function& fn, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << (fn.is_c ? "C-Function: " : "Function: ") << fn.name.text << "(";
     for (size_t i = 0; i < fn.args.size(); i++) {
-        std::cout << fn.args[i].text;
-        if (i + 1 < fn.args.size()) std::cout << ", ";
+        os << fn.args[i].text;
+        if (i + 1 < fn.args.size()) os << ", ";
     }
-
-    std::cout << ")\n";
-    ind(); std::cout << "  body:\n";
-    print_block(fn.body, indent + 2, show_text);
-    print_text(fn, indent + 1, show_text);
+    os << ")\n";
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "  body:\n";
+    stream(os, fn.body, indent + 2, show_text);
+    print_token(os, fn, indent + 1, show_text);
 }
 
-inline void print_global(const Global& g, int indent, bool show_text) {
-    auto ind = [indent]() {
-        for (int i = 0; i < indent; i++) std::cout << "  ";
-    };
-
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-
-        if constexpr (std::is_same_v<T, Invalid>) {
-            ind(); std::cout << "Invalid Global\n";
-        }
-        else if constexpr (std::is_same_v<T, FuncDec>) {
-            print_funcdec(arg, indent, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Function>) {
-            print_function(arg, indent, show_text);
-        }
-        else if constexpr (std::is_same_v<T, Basic>) {
-            ind(); std::cout << "Global Basic Statement:\n";
-            print_expression(arg.inner, indent + 1, show_text);
-            print_text(arg, indent + 1, show_text);
-        }
-    }, g.inner);
+inline void stream(std::ostream& os, const Global& g, int indent, bool show_text) {
+    std::visit([&](auto&& arg){ stream(os, arg, indent, show_text); }, g.inner);
 }
 
+// ============================================================
+// print
+// ============================================================
+inline void print_expression(const Expression& e, int indent = 0, bool show_text = false) {
+    stream(std::cout, e, indent, show_text);
+}
 
-};//small_lang
+inline void print_statement(const Statement& s, int indent = 0, bool show_text = false) {
+    stream(std::cout, s, indent, show_text);
+}
+
+inline void print_block(const Block& b, int indent = 0, bool show_text = false) {
+    stream(std::cout, b, indent, show_text);
+}
+
+inline void print_global(const Global& g, int indent = 0, bool show_text = false) {
+    stream(std::cout, g, indent, show_text);
+}
+
+// ============================================================
+// Stream operator overloads
+// ============================================================
+
+inline std::ostream& operator<<(std::ostream& os, const Invalid& v)     { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Var& v)         { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Num& v)         { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const PreOp& v)       { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const BinOp& v)       { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const SubScript& v)   { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Call& v)        { stream(os, v, 0, false); return os; }
+
+inline std::ostream& operator<<(std::ostream& os, const Return& v)      { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const If& v)          { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const While& v)       { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Basic& v)       { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Block& v)       { stream(os, v, 0, false); return os; }
+
+inline std::ostream& operator<<(std::ostream& os, const FuncDec& v)     { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Function& v)    { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Global& v)      { stream(os, v, 0, false); return os; }
+
+inline std::ostream& operator<<(std::ostream& os, const Expression& v)  { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const Statement& v)   { stream(os, v, 0, false); return os; }
+
+} // namespace small_lang

@@ -1,6 +1,7 @@
 #include "compiler.hpp"
 #include "parser.hpp"
 #include "ast_print.hpp"
+#include "ir_print.hpp"
 
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -112,7 +113,7 @@ static int compile_source(std::string_view src, const RunOptions& opt) {
 
         result_t res = ctx.compile(g);
         if (!res) {
-            std::cerr << "[compile error]\n";
+            std::cerr << "[compile error]\n" << res.error();
             return 1;
         }
     }
@@ -168,7 +169,9 @@ int main() {
         }
 
         cfn main() {
-            return 1+helper(helper(0));
+            a = 1+helper(helper(0));
+            a = a + a;
+            return a;
         }
     )";
     //  std::string_view src = R"(

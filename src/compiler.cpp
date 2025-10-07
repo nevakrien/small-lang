@@ -29,19 +29,53 @@ struct ExpressionVisitor {
     }
 
     vresult_t operator()(const BinOp& bin_op) const {
+    	llvm::Value *a,*b;
+
+    	//auto mind specilization for degenracy
+    	if(bin_op.op.kind==Operator::Assign) if 
+    		(const auto var = std::get_if<Var>(&bin_op.a->inner))
+    		if (ctx.vars.find(var->text)==ctx.vars.end())
+    		{
+
+    		vresult_t rb = ctx.compile(*bin_op.b);
+	    	if(!rb) return rb;
+	    	b = *rb;
+
+	    	llvm::AllocaInst* slot =
+		        ctx.builder.CreateAlloca(b->getType(), nullptr, var->text);
+
+		    ctx.builder.CreateStore(b, slot);
+		    ctx.vars[var->text] = slot;
+
+	    	return b;
+    	}
+
     	vresult_t ra = ctx.compile(*bin_op.a);
     	if(!ra) return ra;
-    	llvm::Value* a = *ra;
+    	a = *ra;
 
     	vresult_t rb = ctx.compile(*bin_op.b);
     	if(!rb) return rb;
-    	llvm::Value* b = *rb;
+    	b = *rb;
 
     	switch(bin_op.op.kind){
     	case Operator::Plus:
     		return ctx.builder.CreateAdd(a,b);//TODO we probably wana check types
+    	case Operator::Assign:{
+    		llvm::Value* ptr = nullptr;
+		    if (auto* load = llvm::dyn_cast<llvm::LoadInst>(a)) {
+		        ptr = load->getPointerOperand();
+		    } else {
+		    	TODO
+		    }
+
+		    ctx.builder.CreateStore(b, ptr);
+		    //returning b has the same semantics of C more or less
+		    return b;
+		}
     	case Operator::Invalid:
     		throw std::invalid_argument("uninit binop expression");
+    		break;
     	default:
     		TODO
     	}
