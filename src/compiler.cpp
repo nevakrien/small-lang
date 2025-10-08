@@ -39,43 +39,86 @@ struct ExpressionVisitor {
 	    return false;
 	}
 
+	void promote_integer_pair(Value& a, Value& b) const {
+	    auto* ta = llvm::cast<llvm::IntegerType>(a.type.t);
+	    auto* tb = llvm::cast<llvm::IntegerType>(b.type.t);
+
+	    unsigned wa = ta->getBitWidth();
+	    unsigned wb = tb->getBitWidth();
+
+	    if (wa == wb)
+	        return; // already same width
+
+	    // choose larger width
+	    unsigned target_width = std::max(wa, wb);
+	    llvm::Type* target_type = llvm::Type::getIntNTy(*ctx.ctx, target_width);
+
+	    if (wa < target_width) {
+	        a.v = ctx.builder.CreateIntCast(a.v, target_type, /*isSigned=*/true, "cast_up_a");
+	        a.type = Type{target_type,nullptr,nullptr};
+	    }
+
+	    if (wb < target_width) {
+	        b.v = ctx.builder.CreateIntCast(b.v, target_type, /*isSigned=*/true, "cast_up_b");
+	        b.type = Type{target_type,nullptr,nullptr};
+	    }
+	}
+
+	result_t implicit_cast(Value& val, const Type& target_type) const {
+	    llvm::Type* src = val.type.t;
+	    llvm::Type* dst = target_type.t;
+
+	    // only handle integers for now
+	    if (src->isIntegerTy() && dst->isIntegerTy()) {
+	        unsigned sw = llvm::cast<llvm::IntegerType>(src)->getBitWidth();
+	        unsigned dw = llvm::cast<llvm::IntegerType>(dst)->getBitWidth();
+
+	        if (sw == dw)
+	            return {}; // same width, nothing to do
+
+	        if (sw < dw) {
+	            val.v = ctx.builder.CreateIntCast(val.v, dst, /*isSigned=*/true, "int_extend");
+	            val.type = Type{dst,nullptr,nullptr};
+	            return {};
+	        }
+
+	        // narrowing is not implicit
+	        // return std::unexpected(BadType{Invalid{}, dst, src});
+	    }
+	    TODO//add proper source maps for error reporting
+
+	    // TODO: add the rest
+	    // return std::unexpected(BadType{Invalid{}, dst, src});
+	}
+
+
+
     vresult_t to_bool(Value val) const {
         // originally created bool comparisons depending on type
         // we keep structure but move to Value
+        Value out{};
+        out.type = ctx.bool_type;
+
         if (val.type.t->isIntegerTy()) {
             llvm::Value* zero = llvm::ConstantInt::get(val.type.t, 0);
-            Value out{};
             out.v = ctx.builder.CreateICmpNE(val.v, zero, "tobool");
-            TODO;
             return out;
         }
 
         if (val.type.t->isFloatingPointTy()) {
             llvm::Value* zero = llvm::ConstantFP::get(val.type.t, 0.0);
-            Value out{};
             out.v = ctx.builder.CreateFCmpONE(val.v, zero, "tobool");
-            TODO;
             return out;
         }
 
         if (val.type.t->isPointerTy()) {
             llvm::Value* null = llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(val.type.t));
-            Value out{};
             out.v = ctx.builder.CreateICmpNE(val.v, null, "tobool");
-            TODO;
             return out;
         }
 
         return std::unexpected(CantBool{val.type.t});
-    }
-
-    vresult_t int_to_bool(Value val) const {
-        llvm::Value* zero = llvm::ConstantInt::get(val.type.t, 0);
-        Value out{};
-        out.v = ctx.builder.CreateICmpNE(val.v, zero, "tobool");
-        TODO;
-        return out;
     }
 
     vresult_t operator()(const Invalid&) const {
@@ -141,17 +184,15 @@ struct ExpressionVisitor {
 
 	
 
-	vresult_t do_write(Value mem,Value b) const{
-		if(mem.type.stored->t!=b.type.t)
-			TODO//junk write
+	
+	vresult_t do_assign(Value a,Value b) const{
+		if(!a.address) TODO;//junk assigment
+		Value& mem = *a.address;
+		result_t r = implicit_cast(b,*mem.type.stored);
+		if(!r) return std::unexpected(std::move(r).error());
 
 		ctx.builder.CreateStore(b.v, mem.v);
 		return b;
-	}
-
-	vresult_t do_assign(Value a,Value b) const{
-		if(!a.address) TODO;//junk assigment
-		return do_write(*a.address,b);
 		
 	}
 
@@ -187,13 +228,15 @@ struct ExpressionVisitor {
 
 	    if(bin_op.op.kind == Operator::Assign)
 	        	return do_assign(a,b);
-	        
-	    // Check: currently only integer types allowed for all binops
-	    if (!a.type.t->isIntegerTy() || a.type.t != b.type.t){
-	        
 
-	 		TODO
-	    }
+	  	// --- type normalization ---
+		if (a.type.t->isIntegerTy() && b.type.t->isIntegerTy()) {
+		    promote_integer_pair(a, b);
+		} else {
+		    // non-integer combination → reject for now
+		    TODO;
+		}
+
 
 	    Value out{};
 	    out.type = a.type;
@@ -244,18 +287,18 @@ struct ExpressionVisitor {
 
 	    // --- logical ---
 	    case Operator::AndAnd: {
-	        auto lhs = int_to_bool(a);
+	        auto lhs = to_bool(a);
 	        if (!lhs) return lhs;
-	        auto rhs = int_to_bool(b);
+	        auto rhs = to_bool(b);
 	        if (!rhs) return rhs;
 	        out.v = ctx.builder.CreateAnd(lhs->v, rhs->v, "andtmp");
 	        out.type = lhs->type;
 	        return out;
 	    }
 	    case Operator::OrOr: {
-	        auto lhs = int_to_bool(a);
+	        auto lhs = to_bool(a);
 	        if (!lhs) return lhs;
-	        auto rhs = int_to_bool(b);
+	        auto rhs = to_bool(b);
 	        if (!rhs) return rhs;
 	        out.v = ctx.builder.CreateOr(lhs->v, rhs->v, "ortmp");
 	        out.type = lhs->type;
@@ -365,6 +408,10 @@ struct StatmentVisitor {
         vresult_t value = ctx.compile(r.val);
         if (!value)
             return std::unexpected<CompileError>(std::move(value).error());
+        
+        result_t res = ExpressionVisitor{ctx}.implicit_cast(*value,ctx.current_func->ret);
+        if(!res) return res;
+
         ctx.builder.CreateRet(value->v);
         return {};
     }
@@ -465,15 +512,18 @@ struct GlobalVisitor {
         }
         assert(it == f.args.end());
 
+        ctx.current_func = fn_val->type.func;
+
         for (auto& stmt : f.body.parts) {
             result_t r = ctx.compile(stmt);
-            if (!r) return r;
+            if (!r) return r;//dont reset function so error can use it
         }
 
         if (f.body.parts.empty() ||
             !std::holds_alternative<Return>(f.body.parts.back().inner))
             TODO;
 
+        ctx.current_func = nullptr;
         return {};
     }
 

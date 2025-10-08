@@ -82,7 +82,8 @@ namespace small_lang {
 	        : ctx(std::make_unique<llvm::LLVMContext>()),
 	          mod(std::make_unique<llvm::Module>(std::move(name), *ctx)),
 	          builder(*ctx),
-	          int_type(Type{llvm::Type::getInt64Ty(*ctx),nullptr,nullptr})
+	          int_type(Type{llvm::Type::getInt64Ty(*ctx),nullptr,nullptr}),
+	          bool_type(Type{llvm::Type::getInt1Ty(*ctx), nullptr, nullptr})
 	    {}
 
 	    vresult_t compile(const Expression& exp);
@@ -90,11 +91,13 @@ namespace small_lang {
 	    result_t compile(const Global& global);
 
 
+	    FunctionType* current_func = nullptr;
 	    std::unique_ptr<llvm::LLVMContext> ctx;
 	    std::unique_ptr<llvm::Module> mod;
 
 	    llvm::IRBuilder<> builder;
 	    Type int_type;
+	    Type bool_type;
 	    // std::map<std::string_view, llvm::AllocaInst*> vars;
 	    // std::map<std::string_view, llvm::Value*> consts;
 
