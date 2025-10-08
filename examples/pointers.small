@@ -1,0 +1,6 @@
+cfn main() {
+	a = 5;
+	pa = &a;
+	*pa = 0;
+	return a;
+}

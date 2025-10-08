@@ -7,8 +7,6 @@
 
 namespace small_lang {
 
-#define TODO assert(0 && "TODO");
-
 
 //base class used for text things
 struct Token {

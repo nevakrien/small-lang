@@ -1,5 +1,8 @@
 #include "compiler.hpp"
+#include "utils.hpp"
 #include <stdexcept>
+
+#include "ir_print.hpp"
 
 namespace small_lang {
 
@@ -91,8 +94,6 @@ struct ExpressionVisitor {
 	    return std::unexpected(BadType<D>{debug, target_type, val.type});
 	}
 
-
-
     vresult_t to_bool(Value val) const {
         // originally created bool comparisons depending on type
         // we keep structure but move to Value
@@ -150,10 +151,51 @@ struct ExpressionVisitor {
         TODO;
     }
 
+    vresult_t pointer_preop(Value a,const PreOp& pre_op) const{
+    	Value out{};
+
+	    switch (pre_op.op.kind) {
+	    case Operator::BitAnd:{
+	    	if(!a.address)
+	    		TODO
+
+	    	return *a.address;
+	    }
+	    case Operator::Star:{
+	    	if(!a.type.stored)
+	    		TODO
+
+	        out.type = *a.type.stored;
+	        out.v = ctx.builder.CreateLoad(out.type.t, a.v);
+
+	        auto au = std::make_unique<Value>(a);
+	        out.address = au.get();
+	        ctx.local_arena.emplace_back(std::move(au));
+	        return out;
+	    }
+	    case Operator::Not: {
+	        llvm::Value* null = llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(a.type.t));
+            out.v = ctx.builder.CreateICmpNE(a.v, null, "not");
+            out.type = ctx.bool_type;
+            return out;
+        }
+	    case Operator::Invalid:
+	        throw std::invalid_argument("uninit preop expression");
+
+	    default:
+	        TODO;
+	    }
+	    return out;
+    }
+
     vresult_t operator()(const PreOp& pre_op) const {
 	    vresult_t ra = ctx.compile(*pre_op.exp);
 	    if (!ra) return ra;
 	    Value a = *ra;
+
+	    if(a.type.t->isPointerTy())
+	    	return pointer_preop(a,pre_op);
 
 	    // Check: only integer types allowed for now
 	    if (!a.type.t->isIntegerTy())
@@ -163,6 +205,12 @@ struct ExpressionVisitor {
 	    out.type = a.type;
 
 	    switch (pre_op.op.kind) {
+	    case Operator::BitAnd:{
+	    	if(!a.address)
+	    		TODO
+
+	    	return *a.address;
+	    }
 	    case Operator::Plus:
 	        return a;
 	    case Operator::Minus:
@@ -176,7 +224,9 @@ struct ExpressionVisitor {
 	    }
 	    case Operator::Invalid:
 	        throw std::invalid_argument("uninit preop expression");
+
 	    default:
+	    	std::cout << pre_op;
 	        TODO;
 	    }
 	    return out;
@@ -316,10 +366,11 @@ struct ExpressionVisitor {
 	        out.v = ctx.builder.CreateXor(a.v, b.v);
 	        return out;
 
-	    // --- assignment ---
-	    case Operator::Assign: {
-	        TODO//error a is an int
-	    }
+	    // --- caught ---
+	    case Operator::Assign: 
+
+	    	UNREACHABLE();
+	    	break;
 
 	    case Operator::Invalid:
 	        throw std::invalid_argument("uninit binop expression");
