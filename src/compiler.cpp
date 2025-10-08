@@ -402,7 +402,43 @@ struct StatmentVisitor {
 
     result_t operator()(const While&) const { TODO; }
 
-    result_t operator()(const If&) const { TODO; }
+    result_t operator()(const If& i) const {
+	    // --- 1. Evaluate condition ---
+	    vresult_t rcond = ctx.compile(i.cond);
+	    if (!rcond)
+	        return std::unexpected(std::move(rcond).error());
+
+	    Value cond_val = *rcond;
+
+	    // --- 2. Convert to boolean ---
+	    vresult_t rcond_bool = ExpressionVisitor{ctx}.to_bool(cond_val);
+	    if (!rcond_bool)
+	        return std::unexpected(std::move(rcond_bool).error());
+
+	    Value cond_bool = *rcond_bool;
+	    llvm::Value* cond = cond_bool.v;
+	    llvm::Function* func = ctx.builder.GetInsertBlock()->getParent();
+	    
+		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, "then", func);
+		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, "else", func);
+		auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
+        ctx.builder.CreateCondBr(cond, bthen, belse);
+
+        ctx.builder.SetInsertPoint(bthen);
+        result_t rthen = compile_block(i.block);
+        if(!rthen) return rthen;
+        if (!bthen->getTerminator())
+        	ctx.builder.CreateBr(bmerge);
+
+        ctx.builder.SetInsertPoint(belse);
+        result_t relse = compile_block(i.else_part);
+        if(!relse) return relse;
+        if (!belse->getTerminator())
+        	ctx.builder.CreateBr(bmerge);
+
+        ctx.builder.SetInsertPoint(bmerge);
+        return {};
+	}
 
     result_t operator()(const Return& r) const {
         vresult_t value = ctx.compile(r.val);
