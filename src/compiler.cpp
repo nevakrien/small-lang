@@ -55,9 +55,10 @@ struct VisitorBase{
 	bool types_exactly_equal(const Type& a, const Type& b) const {
 	    if (a.t == b.t)
 	        return true;
+	    
+	    if (a.stored && b.stored)
+	        return types_exactly_equal(*a.stored, *b.stored);
 
-	    if (a.t->getTypeID() != b.t->getTypeID())
-	        return false;
 
 	    // function type comparison
 	    if (a.func && b.func) {
@@ -78,8 +79,7 @@ struct VisitorBase{
 	        return true;
 	    }
 
-	    if (a.stored && b.stored)
-	        return types_exactly_equal(*a.stored, *b.stored);
+	    
 
 	    //TODO extend to support aggregate/struct comparison
 	    return false;
