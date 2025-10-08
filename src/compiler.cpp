@@ -6,6 +6,16 @@
 
 namespace small_lang {
 
+Type* CompileContext::get_type(const TypeDec& t){
+	if(t.name=="bool")
+		return &bool_type;
+
+	if(t.name=="int")
+		return &int_type;
+
+	return nullptr;
+}
+
 struct ExpressionVisitor {
     CompileContext& ctx;
     
@@ -94,6 +104,28 @@ struct ExpressionVisitor {
 	    return std::unexpected(BadType<D>{debug, target_type, val.type});
 	}
 
+	template <typename D>
+	result_t exiplicit_cast(Value& val, const Type& target_type,const D& debug) const {
+	    llvm::Type* src = val.type.t;
+	    llvm::Type* dst = target_type.t;
+
+	    // only handle integers for now
+	    if (src->isIntegerTy() && dst->isIntegerTy()) {
+	        unsigned sw = llvm::cast<llvm::IntegerType>(src)->getBitWidth();
+	        unsigned dw = llvm::cast<llvm::IntegerType>(dst)->getBitWidth();
+
+	        if (sw == dw)
+	            return {}; // same width, nothing to do
+
+	        val.v = ctx.builder.CreateIntCast(val.v, dst, /*isSigned=*/true, "int_extend");
+            val.type = Type{dst,nullptr,nullptr};
+            return {};
+	    }
+
+	    // TODO: add the rest
+	    return std::unexpected(BadType<D>{debug, target_type, val.type});
+	}
+
     vresult_t to_bool(Value val) const {
         // originally created bool comparisons depending on type
         // we keep structure but move to Value
@@ -147,8 +179,18 @@ struct ExpressionVisitor {
         return std::unexpected(MissingVar{v});
     }
 
-    vresult_t operator()(const TypeCast&) const {
-        TODO;
+    vresult_t operator()(const TypeCast& cast) const {
+    	Type* type = ctx.get_type(cast.type);
+    	if(!type)
+        	TODO;
+
+        vresult_t r = ctx.compile(*cast.exp);
+        if(!r) return r;
+
+        result_t r2 = exiplicit_cast(*r,*type,cast);
+        if(!r2)
+        	return std::unexpected(std::move(r2).error());
+        return *r;
     }
 
     vresult_t pointer_preop(Value a,const PreOp& pre_op) const{

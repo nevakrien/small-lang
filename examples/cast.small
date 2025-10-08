@@ -1,0 +1,6 @@
+cfn main(){
+	a = 0;
+	b = @bool 0;
+	a = @int b;
+	return 0;
+}

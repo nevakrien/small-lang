@@ -67,13 +67,12 @@ struct BadType {
 
 struct StatmentError;
 
-using CompileError = std::variant<MissingVar,NotAFunction,CantBool,BadType<Expression>,BadType<BinOp>,BadType<Return>,WrongArgCount,StatmentError>;
+using CompileError = std::variant<MissingVar,NotAFunction,CantBool,BadType<Expression>,BadType<BinOp>,BadType<Return>,BadType<TypeCast>,WrongArgCount,StatmentError>;
 struct StatmentError {
 	const Statement& parent;
 	std::unique_ptr<CompileError> source;
 };
 
-// using vresult_t = std::expected<llvm::Value*,CompileError>;
 using vresult_t = std::expected<Value,CompileError>;
 using result_t = std::expected<void,CompileError>;
 
@@ -91,6 +90,7 @@ struct CompileContext {
     result_t compile(const Statement& stmt);
     result_t compile(const Global& global);
 
+    Type* get_type(const TypeDec& t);
 
     FunctionType* current_func = nullptr;
     std::unique_ptr<llvm::LLVMContext> ctx;
