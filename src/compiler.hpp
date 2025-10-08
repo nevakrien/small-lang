@@ -86,7 +86,7 @@ struct CompileContext {
           bool_type(Type{llvm::Type::getInt1Ty(*ctx), nullptr, nullptr})
     {}
 
-    vresult_t compile(const Expression& exp);
+    result_t compile(const Expression& exp,Value& out);
     result_t compile(const Statement& stmt);
     result_t compile(const Global& global);
 

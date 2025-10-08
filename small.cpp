@@ -74,5 +74,9 @@ int main(int argc, char** argv) {
     std::cout << "=== Small-Lang ===\n";
     std::cout << "[source: " << input_path << "]\n";
 
-    return compile_source(src, opt);
+    int64_t ret = 0;
+    if(compile_source(src, opt,ret))
+        return 1;
+
+    return ret;
 }

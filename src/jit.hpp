@@ -16,6 +16,6 @@ struct RunOptions {
     bool run_main      = true;
 };
 
-int compile_source(std::string_view src, const RunOptions& opt);
+int compile_source(std::string_view src, const RunOptions& opt,int64_t& ret);
 
 }

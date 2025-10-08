@@ -1,4 +1,4 @@
 cfn abs(a);
 cfn main() {
-	return abs(1);
+	return abs(1)-1;
 }

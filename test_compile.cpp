@@ -29,5 +29,6 @@ int main() {
     opt.run_main      = true;
 
     std::cout << "[source]\n" << src << "\n";
-    return compile_source(src, opt);
+    int64_t ret;
+    return compile_source(src, opt,ret);
 }

@@ -4,6 +4,9 @@
 
 #include "ir_print.hpp"
 
+
+#define FORWARD_UNEXPECTED(src) std::unexpected(std::move(src).error())
+
 namespace small_lang {
 
 Type* CompileContext::get_type(const TypeDec& t){
@@ -16,10 +19,10 @@ Type* CompileContext::get_type(const TypeDec& t){
 	return nullptr;
 }
 
-struct ExpressionVisitor {
-    CompileContext& ctx;
-    
-    bool types_exactly_equal(const Type& a, const Type& b) const {
+struct VisitorBase{
+	CompileContext& ctx;
+
+	bool types_exactly_equal(const Type& a, const Type& b) const {
 	    if (a.t == b.t)
 	        return true;
 
@@ -151,57 +154,58 @@ struct ExpressionVisitor {
             return out;
         }
 
-        return std::unexpected(CantBool{val.type.t});
+        return std::unexpected(CantBool{val.type.t,nullptr,nullptr});
     }
+};
 
-    vresult_t operator()(const Invalid&) const {
+struct ExpressionVisitor : VisitorBase{
+	Value& out;
+    result_t operator()(const Invalid&) const {
         throw std::invalid_argument("uninit expression");
     }
 
-    vresult_t operator()(const Num& n) const {
-        Value out{};
+    result_t operator()(const Num& n) const {
         out.v = llvm::ConstantInt::getSigned(ctx.int_type.t, n.value);
         out.type.t = ctx.int_type.t;
-        return out;
+        return {};
     }
 
-    vresult_t operator()(const Var& v) const {
+    result_t operator()(const Var& v) const {
         if (auto it = ctx.local_var_addrs.find(v.text); it != ctx.local_var_addrs.end()) {
-            Value out{};
             Value* addr = it->second.get();
             out.type = *addr->type.stored;
             out.v = ctx.builder.CreateLoad(out.type.t, addr->v, v.text);
             out.address = addr;
-            return out;
+            return {};
         }
-        if (auto it = ctx.global_consts.find(v.text); it != ctx.global_consts.end())
-            return *it->second;
+        if (auto it = ctx.global_consts.find(v.text); it != ctx.global_consts.end()){
+        	out = *it->second;
+            return {};
+        }
         return std::unexpected(MissingVar{v});
     }
 
-    vresult_t operator()(const TypeCast& cast) const {
+    result_t operator()(const TypeCast& cast) const {
     	Type* type = ctx.get_type(cast.type);
     	if(!type)
         	TODO;
 
-        vresult_t r = ctx.compile(*cast.exp);
-        if(!r) return r;
+        result_t r = ctx.compile(*cast.exp,out);
+        if(!r) return FORWARD_UNEXPECTED(r);
 
-        result_t r2 = exiplicit_cast(*r,*type,cast);
-        if(!r2)
-        	return std::unexpected(std::move(r2).error());
-        return *r;
+        result_t r2 = exiplicit_cast(out,*type,cast);
+        if(!r2) return FORWARD_UNEXPECTED(r2);
+        return {};
     }
 
-    vresult_t pointer_preop(Value a,const PreOp& pre_op) const{
-    	Value out{};
-
+    result_t pointer_preop(Value a,const PreOp& pre_op) const{
 	    switch (pre_op.op.kind) {
 	    case Operator::BitAnd:{
 	    	if(!a.address)
 	    		TODO
 
-	    	return *a.address;
+	    	out = *a.address;
+	    	return {};
 	    }
 	    case Operator::Star:{
 	    	if(!a.type.stored)
@@ -213,14 +217,14 @@ struct ExpressionVisitor {
 	        auto au = std::make_unique<Value>(a);
 	        out.address = au.get();
 	        ctx.local_arena.emplace_back(std::move(au));
-	        return out;
+	        return {};
 	    }
 	    case Operator::Not: {
 	        llvm::Value* null = llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(a.type.t));
             out.v = ctx.builder.CreateICmpNE(a.v, null, "not");
             out.type = ctx.bool_type;
-            return out;
+            return {};
         }
 	    case Operator::Invalid:
 	        throw std::invalid_argument("uninit preop expression");
@@ -228,13 +232,13 @@ struct ExpressionVisitor {
 	    default:
 	        TODO;
 	    }
-	    return out;
+	    return {};
     }
 
-    vresult_t operator()(const PreOp& pre_op) const {
-	    vresult_t ra = ctx.compile(*pre_op.exp);
-	    if (!ra) return ra;
-	    Value a = *ra;
+    result_t operator()(const PreOp& pre_op) const {
+	    Value a;
+	    result_t r = ctx.compile(*pre_op.exp,a);
+	    if (!r) return FORWARD_UNEXPECTED(r);
 
 	    if(a.type.t->isPointerTy())
 	    	return pointer_preop(a,pre_op);
@@ -243,7 +247,6 @@ struct ExpressionVisitor {
 	    if (!a.type.t->isIntegerTy())
 	        TODO; // non-integer preops not handled yet
 
-	    Value out{};
 	    out.type = a.type;
 
 	    switch (pre_op.op.kind) {
@@ -251,18 +254,21 @@ struct ExpressionVisitor {
 	    	if(!a.address)
 	    		TODO
 
-	    	return *a.address;
+	    	out = *a.address;
+	    	return {};
 	    }
-	    case Operator::Plus:
-	        return a;
+	    case Operator::Plus:{
+	    	out = a;
+	        return {};
+	    }
 	    case Operator::Minus:
 	        out.v = ctx.builder.CreateNeg(a.v, "neg");
-	        return out;
+	        return {};
 	    case Operator::Not: {
 	        llvm::Value* zero = llvm::ConstantInt::get(a.type.t, 0);
 	        out.v = ctx.builder.CreateICmpEQ(a.v, zero, "logical_not");
 	        out.type = Type{out.v->getType(),nullptr,nullptr};
-	        return out;
+	        return {};
 	    }
 	    case Operator::Invalid:
 	        throw std::invalid_argument("uninit preop expression");
@@ -271,33 +277,19 @@ struct ExpressionVisitor {
 	    	std::cout << pre_op;
 	        TODO;
 	    }
-	    return out;
+	    return {};
 	}
 
-	
 
-	template <typename D>
-	vresult_t do_assign(Value a,Value b,const D& debug) const{
-		if(!a.address) TODO;//junk assigment
-		Value& mem = *a.address;
-		result_t r = implicit_cast(b,*mem.type.stored,debug);
-		if(!r) return std::unexpected(std::move(r).error());
-
-		ctx.builder.CreateStore(b.v, mem.v);
-		return b;
-		
-	}
-
-	vresult_t operator()(const BinOp& bin_op) const {
+	result_t operator()(const BinOp& bin_op) const {
 	    Value a, b;
 
 	    // auto-mint specialization (degenerate assign)
 	    if (bin_op.op.kind == Operator::Assign)
 	    if (const auto var = std::get_if<Var>(&bin_op.a->inner))
 	    if (ctx.local_var_addrs.find(var->text) == ctx.local_var_addrs.end()) {
-	        vresult_t rb = ctx.compile(*bin_op.b);
-	        if (!rb) return rb;
-	        b = *rb;
+	        result_t rb = ctx.compile(*bin_op.b,b);
+	        if (!rb) return FORWARD_UNEXPECTED(rb);
 
 	        auto slot = std::make_unique<Value>();
 	        slot->v = ctx.builder.CreateAlloca(b.type.t, nullptr, var->text);
@@ -307,19 +299,26 @@ struct ExpressionVisitor {
 	        
 	        ctx.builder.CreateStore(b.v, slot->v);
 	        ctx.local_var_addrs[var->text] = std::move(slot);
-	        return b;
+	        out = b;
+	        return {};
 	    }
 
-	    vresult_t ra = ctx.compile(*bin_op.a);
-	    if (!ra) return ra;
-	    a = *ra;
+	    result_t ra = ctx.compile(*bin_op.a,a);
+	    if (!ra) return FORWARD_UNEXPECTED(ra);
 
-	    vresult_t rb = ctx.compile(*bin_op.b);
-	    if (!rb) return rb;
-	    b = *rb;
+	    result_t rb = ctx.compile(*bin_op.b,b);
+	    if (!rb) return FORWARD_UNEXPECTED(rb);
 
-	    if(bin_op.op.kind == Operator::Assign)
-	        	return do_assign(a,b,bin_op);
+	    if(bin_op.op.kind == Operator::Assign){
+	    	if(!a.address) TODO;//junk assigment
+			Value& mem = *a.address;
+			result_t r = implicit_cast(b,*mem.type.stored,bin_op);
+			if(!r) return FORWARD_UNEXPECTED(r);
+
+			ctx.builder.CreateStore(b.v, mem.v);
+			out = b;
+			return {};
+	    }
 
 	  	// --- type normalization ---
 		if (a.type.t->isIntegerTy() && b.type.t->isIntegerTy()) {
@@ -330,83 +329,82 @@ struct ExpressionVisitor {
 		}
 
 
-	    Value out{};
 	    out.type = a.type;
 
 	    switch (bin_op.op.kind) {
 	    // --- arithmetic ---
 	    case Operator::Plus:
 	        out.v = ctx.builder.CreateAdd(a.v, b.v);
-	        return out;
+	        return {};
 	    case Operator::Minus:
 	        out.v = ctx.builder.CreateSub(a.v, b.v);
-	        return out;
+	        return {};
 	    case Operator::Star:
 	        out.v = ctx.builder.CreateMul(a.v, b.v);
-	        return out;
+	        return {};
 	    case Operator::Slash:
 	        out.v = ctx.builder.CreateSDiv(a.v, b.v);
-	        return out;
+	        return {};
 	    case Operator::Percent:
 	        out.v = ctx.builder.CreateSRem(a.v, b.v);
-	        return out;
+	        return {};
 
 	    // --- comparison ---
 	    case Operator::Lt:
 	        out.v = ctx.builder.CreateICmpSLT(a.v, b.v);
 	        out.type = Type{out.v->getType(), nullptr, nullptr};
-	        return out;
+	        return {};
 	    case Operator::Gt:
 	        out.v = ctx.builder.CreateICmpSGT(a.v, b.v);
 	        out.type = Type{out.v->getType(), nullptr, nullptr};
-	        return out;
+	        return {};
 	    case Operator::Le:
 	        out.v = ctx.builder.CreateICmpSLE(a.v, b.v);
 	        out.type = Type{out.v->getType(), nullptr, nullptr};
-	        return out;
+	        return {};
 	    case Operator::Ge:
 	        out.v = ctx.builder.CreateICmpSGE(a.v, b.v);
 	        out.type = Type{out.v->getType(), nullptr, nullptr};
-	        return out;
+	        return {};
 	    case Operator::EqEq:
 	        out.v = ctx.builder.CreateICmpEQ(a.v, b.v);
 	        out.type = Type{out.v->getType(), nullptr, nullptr};
-	        return out;
+	        return {};
 	    case Operator::NotEq:
 	        out.v = ctx.builder.CreateICmpNE(a.v, b.v);
 	        out.type = Type{out.v->getType(), nullptr, nullptr};
-	        return out;
+	        return {};
 
 	    // --- logical ---
 	    case Operator::AndAnd: {
 	        auto lhs = to_bool(a);
-	        if (!lhs) return lhs;
+	        if (!lhs) return FORWARD_UNEXPECTED(lhs);
 	        auto rhs = to_bool(b);
-	        if (!rhs) return rhs;
+	        if (!rhs) return FORWARD_UNEXPECTED(rhs);
 	        out.v = ctx.builder.CreateAnd(lhs->v, rhs->v, "andtmp");
 	        out.type = lhs->type;
-	        return out;
+	        return {};
 	    }
 	    case Operator::OrOr: {
 	        auto lhs = to_bool(a);
-	        if (!lhs) return lhs;
+	        if (!lhs) return FORWARD_UNEXPECTED(lhs);
 	        auto rhs = to_bool(b);
-	        if (!rhs) return rhs;
+	        if (!rhs) return FORWARD_UNEXPECTED(rhs);
 	        out.v = ctx.builder.CreateOr(lhs->v, rhs->v, "ortmp");
 	        out.type = lhs->type;
-	        return out;
+	        return {};
 	    }
 
 	    // --- bitwise ---
 	    case Operator::BitAnd:
 	        out.v = ctx.builder.CreateAnd(a.v, b.v);
-	        return out;
+	        return {};
 	    case Operator::BitOr:
 	        out.v = ctx.builder.CreateOr(a.v, b.v);
-	        return out;
+	        return {};
 	    case Operator::BitXor:
 	        out.v = ctx.builder.CreateXor(a.v, b.v);
-	        return out;
+	        return {};
 
 	    // --- caught ---
 	    case Operator::Assign: 
@@ -421,20 +419,20 @@ struct ExpressionVisitor {
 	        TODO;
 	    }
 
-	    return out; // only reached for TODOs / incomplete branches
+	    return {}; // only reached for TODOs / incomplete branches
 	}
 
 
 
 
-    vresult_t operator()(const SubScript&) const {
+    result_t operator()(const SubScript&) const {
         TODO;
     }
 
-    vresult_t operator()(const Call& c) const {
-	    vresult_t rf = ctx.compile(*c.func);
-	    if (!rf) return rf;
-	    Value fn_val = *rf;
+    result_t operator()(const Call& c) const {
+	    Value fn_val;
+	    result_t rf = ctx.compile(*c.func,fn_val);
+	    if (!rf) return FORWARD_UNEXPECTED(rf);
 
 	    // must be a function
 	    if (!fn_val.type.func || !fn_val.type.func->ft)
@@ -450,9 +448,9 @@ struct ExpressionVisitor {
 	    std::vector<llvm::Value*> arg_vals;
 	    arg_vals.reserve(c.args.size());
 	    for (size_t i = 0; i < c.args.size(); ++i) {
-	        vresult_t ra = ctx.compile(c.args[i]);
-	        if (!ra) return ra;
-	        Value a = *ra;
+	        Value a;
+	        result_t ra = ctx.compile(c.args[i],a);
+	        if (!ra) return FORWARD_UNEXPECTED(ra);
 	        arg_vals.push_back(a.v);
 
 	        const Type& expected = fnty->args[i];
@@ -466,21 +464,20 @@ struct ExpressionVisitor {
 	    call->setCallingConv(fnty->cc);
 
 	    // wrap result
-	    Value out{};
 	    out.v = call;
 	    out.type = fnty->ret;
-	    return out;
+	    return {};
 	}
 
 };
 
-vresult_t CompileContext::compile(const Expression& exp) {
-    return std::visit(ExpressionVisitor{*this}, exp.inner);
+result_t CompileContext::compile(const Expression& exp,Value& out) {
+    result_t r = std::visit(ExpressionVisitor{*this,out}, exp.inner);
+    if(!r) return FORWARD_UNEXPECTED(r);
+    return {};
 }
 
-struct StatmentVisitor {
-    CompileContext& ctx;
-
+struct StatmentVisitor :VisitorBase {
     result_t compile_block(const Block& b) const {
         for (auto& stmt : b.parts) {
             result_t r = ctx.compile(stmt);
@@ -497,16 +494,15 @@ struct StatmentVisitor {
 
     result_t operator()(const If& i) const {
 	    // --- 1. Evaluate condition ---
-	    vresult_t rcond = ctx.compile(i.cond);
-	    if (!rcond)
-	        return std::unexpected(std::move(rcond).error());
+	    Value cond_val;
+	    result_t rcond = ctx.compile(i.cond,cond_val);
+	    if (!rcond) return rcond;
 
-	    Value cond_val = *rcond;
 
 	    // --- 2. Convert to boolean ---
-	    vresult_t rcond_bool = ExpressionVisitor{ctx}.to_bool(cond_val);
+	    vresult_t rcond_bool = to_bool(cond_val);
 	    if (!rcond_bool)
-	        return std::unexpected(std::move(rcond_bool).error());
+	        return FORWARD_UNEXPECTED(rcond_bool);
 
 	    Value cond_bool = *rcond_bool;
 	    llvm::Value* cond = cond_bool.v;
@@ -534,21 +530,22 @@ struct StatmentVisitor {
 	}
 
     result_t operator()(const Return& r) const {
-        vresult_t value = ctx.compile(r.val);
-        if (!value)
-            return std::unexpected<CompileError>(std::move(value).error());
+        Value value;
+        result_t res = ctx.compile(r.val,value);
+        if (!res) return res;
         
-        result_t res = ExpressionVisitor{ctx}.implicit_cast(*value,ctx.current_func->ret,r);
-        if(!res) return res;
+        result_t res2 = implicit_cast(value,ctx.current_func->ret,r);
+        if(!res2) return res2;
 
-        ctx.builder.CreateRet(value->v);
+        ctx.builder.CreateRet(value.v);
         return {};
     }
 
     result_t operator()(const Block& b) const { return compile_block(b); }
 
     result_t operator()(const Basic& b) const {
-        return ctx.compile(b.inner).transform([](auto&&) {});
+    	Value out;
+        return ctx.compile(b.inner,out);
     }
 };
 
@@ -559,9 +556,7 @@ result_t CompileContext::compile(const Statement& stmt) {
         StatmentError{stmt, std::make_unique<CompileError>(std::move(r).error())});
 }
 
-struct GlobalVisitor {
-    CompileContext& ctx;
-
+struct GlobalVisitor : VisitorBase {
     Value* generate_func(const FuncDec& dec) const {
         std::vector<llvm::Type*> arg_llvm_types;
         std::vector<Type> arg_types;

@@ -45,7 +45,7 @@ static void optimize_module(llvm::Module& mod) {
 // ------------------------------------------------------------
 // Run the JIT and call main()
 // ------------------------------------------------------------
-static int run_jit(CompileContext& ctx, const RunOptions& opt) {
+static int run_jit(CompileContext& ctx, const RunOptions& opt,int64_t& ret) {
     auto jitExp = llvm::orc::LLJITBuilder().create();
 
     if (!jitExp) {
@@ -80,7 +80,7 @@ static int run_jit(CompileContext& ctx, const RunOptions& opt) {
     MainFn mainFn = sym->toPtr<MainFn>();
 
     std::cout << "[Run]\n";
-    int64_t ret = mainFn();
+    ret = mainFn();
     std::cout << "main() returned " << ret << "\n";
     return 0;
 }
@@ -88,7 +88,7 @@ static int run_jit(CompileContext& ctx, const RunOptions& opt) {
 // ------------------------------------------------------------
 // Compile + verify + (optionally) optimize + JIT
 // ------------------------------------------------------------
-int compile_source(std::string_view src, const RunOptions& opt) {
+int compile_source(std::string_view src, const RunOptions& opt,int64_t& ret) {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
@@ -151,7 +151,7 @@ int compile_source(std::string_view src, const RunOptions& opt) {
         std::cout << "\n";
     }
 
-    return run_jit(ctx, opt);
+    return run_jit(ctx, opt,ret);
 }
 
 }//small_lang
