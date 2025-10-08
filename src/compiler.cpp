@@ -53,6 +53,9 @@ struct ExpressionVisitor {
        	return  std::unexpected(MissingVar{v});       	
     } 
 
+    vresult_t operator()(const TypeCast& cast) const {
+    	TODO
+    };
     vresult_t operator()(const PreOp& pre_op) const {
         vresult_t ra = ctx.compile(*pre_op.exp);
     	if(!ra) return ra;

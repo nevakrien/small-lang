@@ -92,6 +92,15 @@ struct BinOp : Token{
 	Op op;
 };
 
+struct Type : Token {
+    std::string_view name;
+};
+
+struct TypeCast : Token {
+    Type type;
+    std::unique_ptr<Expression> exp;//in some cases allowed to be null when we wana refer to a type directly
+};
+
 struct SubScript : Token{
 	std::unique_ptr<Expression> arr;
 	std::unique_ptr<Expression> idx;
@@ -103,7 +112,7 @@ struct Call : Token{
 	std::vector<Expression> args;
 };
 
-using ExpressionVariant = std::variant<Invalid,Var,Num,PreOp,BinOp,SubScript,Call>;
+using ExpressionVariant = std::variant<Invalid,Var,Num,PreOp,BinOp,TypeCast,SubScript,Call>;
 struct Expression {
 	ExpressionVariant inner;
 	constexpr Expression() noexcept = default;

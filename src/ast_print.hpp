@@ -87,6 +87,13 @@ inline void stream(std::ostream& os, const PreOp& p, int indent, bool show_text)
     print_token(os, p, indent + 1, show_text);
 }
 
+inline void stream(std::ostream& os, const TypeCast& c, int indent, bool show_text) {
+    for (int i = 0; i < indent; i++) os << "  ";
+    os << "TypeCast: to "<<c.type.name<<"\n";
+    stream(os, *c.exp, indent + 1, show_text);
+    print_token(os, c, indent + 1, show_text);
+}
+
 inline void stream(std::ostream& os, const BinOp& b, int indent, bool show_text) {
     for (int i = 0; i < indent; i++) os << "  ";
     os << "BinOp: " << b.op << "\n";
@@ -241,6 +248,7 @@ inline std::ostream& operator<<(std::ostream& os, const Invalid& v)     { stream
 inline std::ostream& operator<<(std::ostream& os, const Var& v)         { stream(os, v, 0, false); return os; }
 inline std::ostream& operator<<(std::ostream& os, const Num& v)         { stream(os, v, 0, false); return os; }
 inline std::ostream& operator<<(std::ostream& os, const PreOp& v)       { stream(os, v, 0, false); return os; }
+inline std::ostream& operator<<(std::ostream& os, const TypeCast& v)    { stream(os, v, 0, false); return os; }
 inline std::ostream& operator<<(std::ostream& os, const BinOp& v)       { stream(os, v, 0, false); return os; }
 inline std::ostream& operator<<(std::ostream& os, const SubScript& v)   { stream(os, v, 0, false); return os; }
 inline std::ostream& operator<<(std::ostream& os, const Call& v)        { stream(os, v, 0, false); return os; }

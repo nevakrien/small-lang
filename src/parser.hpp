@@ -18,7 +18,7 @@ static constexpr std::string_view keywords[] = {
     "fn", "cfn",
     //not used but like comeon
     "break", "continue", "true", "false",
-    "let", "const", "struct"
+    "let","as","is", "const", "struct"
 };
 
 
@@ -40,6 +40,7 @@ struct ParseError {
 
 static constexpr Bp CALL_BP = 16;
 static constexpr Bp SUBSCRIPT_BP = 16;
+static constexpr Bp CAST_BP = 15;
 
 
 
@@ -337,7 +338,6 @@ struct ParseStream{
 	    return ans;
 	}
 
-
 };
 
 
@@ -413,6 +413,20 @@ inline ParseError parse_call_args(ParseStream& stream,Call& out){
 	return stream.consume(")");
 }
 
+inline ParseError parse_type(ParseStream& stream,Type& type){
+	stream.skip_whitespace();
+	const char* start = stream.marker();
+
+	ParseError res = stream.consume("@");
+	if(res) return res;
+
+	res = stream.consume_name(type.name);
+	if(res) return res;
+
+	type.text = {start,stream.marker()};
+	return res;
+}
+
 //HEAVILY inspired by https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
 	ParseError res;
@@ -430,13 +444,27 @@ inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp
 	else if(stream.starts_with("(")){
 		res = parse_paren_expression(stream,out);
 		if(res) return res;
-	}else{
+	}
+	else if(stream.starts_with("@")){
+		TypeCast cast;
+		res = parse_type(stream,cast.type);
+		if(res) return res;
+
+		cast.exp = std::make_unique<Expression>();
+		res = parse_expression(stream,*cast.exp,CAST_BP);
+		if(res) return res;
+
+		cast.text = {start,stream.marker()};
+		out.inner = std::move(cast);
+	}
+	else{
 		res = parse_atom(stream,out);
 		if(res) return res;
 	}
 
 
 	for(;;){
+		//special cases first
 		stream.skip_whitespace();
 		if(stream.starts_with("(")){
 			if(CALL_BP < min_bp) break;
@@ -472,6 +500,7 @@ inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp
 			continue;
 		}
 
+		//common case
 		op = stream.peek_operator();
 		if(!op) break;
 
