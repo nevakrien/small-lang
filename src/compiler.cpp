@@ -1,11 +1,41 @@
 #include "compiler.hpp"
 #include "utils.hpp"
 #include <stdexcept>
+#include <algorithm>
 
 #include "ir_print.hpp"
 
 
 #define FORWARD_UNEXPECTED(src) std::unexpected(std::move(src).error())
+
+
+static std::string concat_statements(std::string_view a, std::string_view b) {
+    std::string combined;
+    combined.reserve(a.size() + b.size());
+
+    // Copy first chunk as-is
+    combined.append(a.data(), a.size());
+
+    // Copy second, collapsing whitespace runs to ≤4
+    size_t run = 0;
+    size_t len = std::min(b.size(),(size_t)100);
+
+    for (size_t i =0;i<len;i++) {
+        if (std::isspace(static_cast<unsigned char>(b[i]))) {
+            if (run < 4) {
+                combined.push_back(' '); // normalize all whitespace to a single space
+                ++run;
+            }
+        } else {
+            run = 0;
+            combined.push_back(b[i]);
+        }
+    }
+
+    return combined;
+}
+
+
 
 namespace small_lang {
 
@@ -55,7 +85,7 @@ struct VisitorBase{
 	    return false;
 	}
 
-	void promote_integer_pair(Value& a, Value& b) const {
+	void promote_integer_pair(Value& a, Value& b,bool isSigned = false) const {
 	    auto* ta = llvm::cast<llvm::IntegerType>(a.type.t);
 	    auto* tb = llvm::cast<llvm::IntegerType>(b.type.t);
 
@@ -70,18 +100,18 @@ struct VisitorBase{
 	    llvm::Type* target_type = llvm::Type::getIntNTy(*ctx.ctx, target_width);
 
 	    if (wa < target_width) {
-	        a.v = ctx.builder.CreateIntCast(a.v, target_type, /*isSigned=*/true, "cast_up_a");
+	        a.v = ctx.builder.CreateIntCast(a.v, target_type,isSigned, "cast_up_a");
 	        a.type = Type{target_type,nullptr,nullptr};
 	    }
 
 	    if (wb < target_width) {
-	        b.v = ctx.builder.CreateIntCast(b.v, target_type, /*isSigned=*/true, "cast_up_b");
+	        b.v = ctx.builder.CreateIntCast(b.v, target_type, isSigned, "cast_up_b");
 	        b.type = Type{target_type,nullptr,nullptr};
 	    }
 	}
 
 	template <typename D>
-	result_t implicit_cast(Value& val, const Type& target_type,const D& debug) const {
+	result_t implicit_cast(Value& val, const Type& target_type,const D& debug,bool isSigned = false) const {
 	    llvm::Type* src = val.type.t;
 	    llvm::Type* dst = target_type.t;
 
@@ -94,7 +124,7 @@ struct VisitorBase{
 	            return {}; // same width, nothing to do
 
 	        if (sw < dw) {
-	            val.v = ctx.builder.CreateIntCast(val.v, dst, /*isSigned=*/true, "int_extend");
+	            val.v = ctx.builder.CreateIntCast(val.v, dst,isSigned, "int_extend");
 	            val.type = Type{dst,nullptr,nullptr};
 	            return {};
 	        }
@@ -108,7 +138,7 @@ struct VisitorBase{
 	}
 
 	template <typename D>
-	result_t exiplicit_cast(Value& val, const Type& target_type,const D& debug) const {
+	result_t exiplicit_cast(Value& val, const Type& target_type,const D& debug,bool isSigned = false) const {
 	    llvm::Type* src = val.type.t;
 	    llvm::Type* dst = target_type.t;
 
@@ -120,7 +150,7 @@ struct VisitorBase{
 	        if (sw == dw)
 	            return {}; // same width, nothing to do
 
-	        val.v = ctx.builder.CreateIntCast(val.v, dst, /*isSigned=*/true, "int_extend");
+	        val.v = ctx.builder.CreateIntCast(val.v, dst, isSigned, "int_extend");
             val.type = Type{dst,nullptr,nullptr};
             return {};
 	    }
@@ -274,7 +304,7 @@ struct ExpressionVisitor : VisitorBase{
 	        throw std::invalid_argument("uninit preop expression");
 
 	    default:
-	    	std::cout << pre_op;
+	    	//std::cout << pre_op;
 	        TODO;
 	    }
 	    return {};
@@ -472,6 +502,8 @@ struct ExpressionVisitor : VisitorBase{
 };
 
 result_t CompileContext::compile(const Expression& exp,Value& out) {
+	//print("[compiling exp:]\n");
+	// print_expression(exp,1,true);
     result_t r = std::visit(ExpressionVisitor{*this,out}, exp.inner);
     if(!r) return FORWARD_UNEXPECTED(r);
     return {};
@@ -508,23 +540,34 @@ struct StatmentVisitor :VisitorBase {
 	    llvm::Value* cond = cond_bool.v;
 	    llvm::Function* func = ctx.builder.GetInsertBlock()->getParent();
 
-		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, "then", func);
-		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, "else", func);
+		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, concat_statements("then",i.block.text), func);
+		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, concat_statements("else",i.else_part.text), func);
 		auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
         ctx.builder.CreateCondBr(cond, bthen, belse);
 
+        //print("in %p \n",ctx.builder.GetInsertBlock());
+        //print("made %p %p %p\n",bthen,belse,bmerge);
+        //print("setting insertion at %p \n",bthen);
         ctx.builder.SetInsertPoint(bthen);
         result_t rthen = compile_block(i.block);
         if(!rthen) return rthen;
-        if (!bthen->getTerminator())
+        if (!bthen->getTerminator()){
+        	//print("adding merge in %p to %p\n",ctx.builder.GetInsertBlock(),bmerge);
         	ctx.builder.CreateBr(bmerge);
+        }
 
+        //print("in %p \n",ctx.builder.GetInsertBlock());
+        //print("setting insertion at %p \n",belse);
         ctx.builder.SetInsertPoint(belse);
         result_t relse = compile_block(i.else_part);
         if(!relse) return relse;
-        if (!belse->getTerminator())
+        if (!belse->getTerminator()){
+        	//print("adding merge in %p to %p\n",ctx.builder.GetInsertBlock(),bmerge);
         	ctx.builder.CreateBr(bmerge);
+        }
 
+        //print("in %p \n",ctx.builder.GetInsertBlock());
+        //print("setting insertion at %p \n",bmerge);
         ctx.builder.SetInsertPoint(bmerge);
         return {};
 	}
@@ -537,6 +580,7 @@ struct StatmentVisitor :VisitorBase {
         result_t res2 = implicit_cast(value,ctx.current_func->ret,r);
         if(!res2) return res2;
 
+        //std::cout << "in "<<ctx.builder.GetInsertBlock() << r.text << "\n";
         ctx.builder.CreateRet(value.v);
         return {};
     }
@@ -550,6 +594,8 @@ struct StatmentVisitor :VisitorBase {
 };
 
 result_t CompileContext::compile(const Statement& stmt) {
+    //print("[compiling stmt:]\n");
+	// print_statement(stmt,1,true);
     result_t r = std::visit(StatmentVisitor{*this}, stmt.inner);
     if (r || std::holds_alternative<StatmentError>(r.error())) return r;
     return std::unexpected(

@@ -634,7 +634,7 @@ inline ParseError parse_statement(ParseStream& stream,Statement& out){
 		if(res) return res;
 
 		if(stream.try_consume("else")){
-			res = parse_block(stream,handle.block);
+			res = parse_block(stream,handle.else_part);
 			handle.text = {start,stream.marker()};
 		}
 

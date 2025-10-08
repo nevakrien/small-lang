@@ -3,5 +3,5 @@ cfn main() {
         b = a==1;
         b = a==b;
         b = b==1;
-        return b;
+        return 1-b;
 }

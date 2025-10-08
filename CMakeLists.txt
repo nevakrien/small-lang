@@ -57,6 +57,8 @@ target_link_libraries(test_compile PRIVATE small_lang)
 add_executable(small small.cpp)
 target_link_libraries(small PRIVATE small_lang)
 
+add_executable(ast_printer ast_printer.cpp)
+target_link_libraries(ast_printer PRIVATE small_lang)
 
 
 # include(FetchContent)
