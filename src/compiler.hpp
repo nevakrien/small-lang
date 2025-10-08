@@ -10,8 +10,6 @@
 #include "ast.hpp"
 
 
-
-
 namespace small_lang {
 
 	struct MissingVar {
@@ -47,29 +45,44 @@ namespace small_lang {
 		const Statement& parent;
 		std::unique_ptr<CompileError> source;
 	};
-	// struct HeledCompilerError{
-	// 	std::unique_ptr<CompileError> inner;
-	// 	HeledCompilerError(CompileError e) : inner(std::make_unique<CompileError>(std::move(e))) {}
-	// 	const CompileError* get(){
-	// 		return *inner;
-	// 	}
-	// };
 
-	using vresult_t = std::expected<llvm::Value*,CompileError>;
+
+	struct FunctionType;
+	struct Type {
+		llvm::Type* t;
+		
+		//optionals (live in function/global storage)
+		Type* stored;
+		FunctionType* func;
+	};
+
+	struct FunctionType {
+		llvm::FunctionType* ft;
+		llvm::CallingConv::ID cc;
+
+		Type ret;
+		std::vector<Type> args;//dont realloc this
+	};
+
+	struct Value {
+		llvm::Value* v;
+		Type type;
+
+		//optionals (live in function/global storage)
+		Value* address;
+	};
+
+	// using vresult_t = std::expected<llvm::Value*,CompileError>;
+	using vresult_t = std::expected<Value,CompileError>;
 	using result_t = std::expected<void,CompileError>;
 
-	using VarEntry = std::variant<
-	    llvm::AllocaInst*,     // stack-allocated variable
-	    llvm::GlobalVariable*, // global
-	    llvm::Value*           // direct LLVM value (const, func, etc.)
-	>;
 
 	struct CompileContext {
 	    CompileContext(std::string name)
 	        : ctx(std::make_unique<llvm::LLVMContext>()),
 	          mod(std::make_unique<llvm::Module>(std::move(name), *ctx)),
 	          builder(*ctx),
-	          int_type(llvm::Type::getInt64Ty(*ctx))
+	          int_type(Type{llvm::Type::getInt64Ty(*ctx),nullptr,nullptr})
 	    {}
 
 	    vresult_t compile(const Expression& exp);
@@ -81,9 +94,21 @@ namespace small_lang {
 	    std::unique_ptr<llvm::Module> mod;
 
 	    llvm::IRBuilder<> builder;
-	    llvm::IntegerType* int_type;
-	    std::map<std::string_view, llvm::AllocaInst*> vars;
-	    std::map<std::string_view, llvm::Value*> consts;
-};
+	    Type int_type;
+	    // std::map<std::string_view, llvm::AllocaInst*> vars;
+	    // std::map<std::string_view, llvm::Value*> consts;
+
+	    std::map<std::string_view, std::unique_ptr<Value>> local_var_addrs;
+	    std::map<std::string_view, std::unique_ptr<Value>> global_consts;
+	    std::vector<std::unique_ptr<Type>> local_type_arena;
+	    std::vector<std::unique_ptr<Value>> local_arena;
+	    std::vector<std::unique_ptr<FunctionType>> func_defs;    
+
+	    void clear_locals(){
+	    	local_var_addrs.clear();
+	    	local_type_arena.clear();
+	    	local_arena.clear();
+	    }
+	};
 
 }//small_lang

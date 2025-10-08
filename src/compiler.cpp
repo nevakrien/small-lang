@@ -1,308 +1,307 @@
 #include "compiler.hpp"
 #include <stdexcept>
-	
-namespace small_lang {
 
+namespace small_lang {
 
 struct ExpressionVisitor {
     CompileContext& ctx;
 
-    vresult_t to_bool(llvm::Value* val) const{
-	    llvm::Type* ty = val->getType();
+    vresult_t to_bool(Value val) const {
+        // originally created bool comparisons depending on type
+        // we keep structure but move to Value
+        if (val.type.t->isIntegerTy()) {
+            llvm::Value* zero = llvm::ConstantInt::get(val.type.t, 0);
+            Value out{};
+            out.v = ctx.builder.CreateICmpNE(val.v, zero, "tobool");
+            TODO;
+            return out;
+        }
 
-	    if (ty->isIntegerTy()) {
-	        llvm::Value* zero = llvm::ConstantInt::get(ty, 0);
-	        return ctx.builder.CreateICmpNE(val, zero, "tobool");
-	    }
+        if (val.type.t->isFloatingPointTy()) {
+            llvm::Value* zero = llvm::ConstantFP::get(val.type.t, 0.0);
+            Value out{};
+            out.v = ctx.builder.CreateFCmpONE(val.v, zero, "tobool");
+            TODO;
+            return out;
+        }
 
-	    if (ty->isFloatingPointTy()) {
-	        llvm::Value* zero = llvm::ConstantFP::get(ty, 0.0);
-	        return ctx.builder.CreateFCmpONE(val, zero, "tobool");
-	    }
+        if (val.type.t->isPointerTy()) {
+            llvm::Value* null = llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(val.type.t));
+            Value out{};
+            out.v = ctx.builder.CreateICmpNE(val.v, null, "tobool");
+            TODO;
+            return out;
+        }
 
-	    if (ty->isPointerTy()) {
-	        llvm::Value* null = llvm::ConstantPointerNull::get(
-	            llvm::cast<llvm::PointerType>(ty));
-	        return ctx.builder.CreateICmpNE(val, null, "tobool");
-	    }
+        return std::unexpected(CantBool{val.type.t});
+    }
 
-	    return  std::unexpected(CantBool{val->getType()});
-	}
-
-	llvm::Value* int_to_bool(llvm::Value* val) const{
-	    // Compare val != 0  → returns i1
-	    llvm::Value* zero = llvm::ConstantInt::get(val->getType(), 0);
-	    return ctx.builder.CreateICmpNE(val, zero, "tobool");
-	}
-
+    vresult_t int_to_bool(Value val) const {
+        llvm::Value* zero = llvm::ConstantInt::get(val.type.t, 0);
+        Value out{};
+        out.v = ctx.builder.CreateICmpNE(val.v, zero, "tobool");
+        TODO;
+        return out;
+    }
 
     vresult_t operator()(const Invalid&) const {
         throw std::invalid_argument("uninit expression");
     }
 
     vresult_t operator()(const Num& n) const {
-        return llvm::ConstantInt::getSigned(ctx.int_type,n.value);
+        Value out{};
+        out.v = llvm::ConstantInt::getSigned(ctx.int_type.t, n.value);
+        out.type.t = ctx.int_type.t;
+        return out;
     }
 
     vresult_t operator()(const Var& v) const {
-       	if (auto it = ctx.vars.find(v.text); it != ctx.vars.end())
-	        return ctx.builder.CreateLoad(it->second->getAllocatedType(), it->second, v.text);
-	    if (auto it = ctx.consts.find(v.text); it != ctx.consts.end())
-	        return it->second;
+        if (auto it = ctx.local_var_addrs.find(v.text); it != ctx.local_var_addrs.end()) {
+            Value out{};
+            Value* addr = it->second.get();
+            out.type = *addr->type.stored;
+            out.v = ctx.builder.CreateLoad(out.type.t, addr->v, v.text);
+            out.address = addr;
+            return out;
+        }
+        if (auto it = ctx.global_consts.find(v.text); it != ctx.global_consts.end())
+            return *it->second;
+        return std::unexpected(MissingVar{v});
+    }
 
-       	return  std::unexpected(MissingVar{v});       	
-    } 
+    vresult_t operator()(const TypeCast&) const {
+        TODO;
+    }
 
-    vresult_t operator()(const TypeCast& cast) const {
-    	TODO
-    };
     vresult_t operator()(const PreOp& pre_op) const {
-        vresult_t ra = ctx.compile(*pre_op.exp);
-    	if(!ra) return ra;
-    	llvm::Value *a = *ra;
+	    vresult_t ra = ctx.compile(*pre_op.exp);
+	    if (!ra) return ra;
+	    Value a = *ra;
 
-    	switch(pre_op.op.kind){
-    	case Operator::Plus:
-    		return a;
-    	case Operator::Minus:
-    		return ctx.builder.CreateNeg(a, "neg");
-    	case Operator::Not:{
-		    llvm::Value* zero = llvm::ConstantInt::get(a->getType(), 0);
-		    return ctx.builder.CreateICmpEQ(a, zero, "logical_not");
-		}
-		case Operator::Invalid:
-    		throw std::invalid_argument("uninit preop expression");
-    		break;
-    	default:
-    		TODO
-    	};
-    }
+	    // Check: only integer types allowed for now
+	    if (!a.type.t->isIntegerTy())
+	        TODO; // non-integer preops not handled yet
 
-    vresult_t operator()(const BinOp& bin_op) const {
-    	llvm::Value *a,*b;
+	    Value out{};
+	    out.type = a.type;
 
-    	//auto mint specilization for degenracy
-    	if(bin_op.op.kind==Operator::Assign) 
-    	if (const auto var = std::get_if<Var>(&bin_op.a->inner))
-    	if (ctx.vars.find(var->text)==ctx.vars.end())
-    		{
+	    switch (pre_op.op.kind) {
+	    case Operator::Plus:
+	        return a;
+	    case Operator::Minus:
+	        out.v = ctx.builder.CreateNeg(a.v, "neg");
+	        return out;
+	    case Operator::Not: {
+	        llvm::Value* zero = llvm::ConstantInt::get(a.type.t, 0);
+	        out.v = ctx.builder.CreateICmpEQ(a.v, zero, "logical_not");
+	        out.type = Type{out.v->getType(),nullptr,nullptr};
+	        return out;
+	    }
+	    case Operator::Invalid:
+	        throw std::invalid_argument("uninit preop expression");
+	    default:
+	        TODO;
+	    }
+	    return out;
+	}
 
-    		vresult_t rb = ctx.compile(*bin_op.b);
-	    	if(!rb) return rb;
-	    	b = *rb;
+	
 
-	    	llvm::AllocaInst* slot =
-		        ctx.builder.CreateAlloca(b->getType(), nullptr, var->text);
+	vresult_t do_write(Value mem,Value b) const{
+		if(mem.type.stored->t!=b.type.t)
+			TODO//junk write
 
-		    ctx.builder.CreateStore(b, slot);
-		    ctx.vars[var->text] = slot;
+		ctx.builder.CreateStore(b.v, mem.v);
+		return b;
+	}
 
-	    	return b;
-    	}
+	vresult_t do_assign(Value a,Value b) const{
+		if(!a.address) TODO;//junk assigment
+		return do_write(*a.address,b);
+		
+	}
 
-    	//all operators have these semantics so we init here
-    	vresult_t ra = ctx.compile(*bin_op.a);
-    	if(!ra) return ra;
-    	a = *ra;
+	vresult_t operator()(const BinOp& bin_op) const {
+	    Value a, b;
 
-    	vresult_t rb = ctx.compile(*bin_op.b);
-    	if(!rb) return rb;
-    	b = *rb;
+	    // auto-mint specialization (degenerate assign)
+	    if (bin_op.op.kind == Operator::Assign)
+	    if (const auto var = std::get_if<Var>(&bin_op.a->inner))
+	    if (ctx.local_var_addrs.find(var->text) == ctx.local_var_addrs.end()) {
+	        vresult_t rb = ctx.compile(*bin_op.b);
+	        if (!rb) return rb;
+	        b = *rb;
 
-    	switch(bin_op.op.kind){
-    	case Operator::Plus:
-    		return ctx.builder.CreateAdd(a,b);//TODO we probably wana check types
-    	case Operator::Minus:
-            return ctx.builder.CreateSub(a, b);
-        case Operator::Star:
-            return ctx.builder.CreateMul(a, b);
-        case Operator::Slash:
-            return ctx.builder.CreateSDiv(a, b); // signed div for now
-        case Operator::Percent:
-            return ctx.builder.CreateSRem(a, b); // signed remainder
-
-        // comparison (integer)
-        case Operator::Lt:
-            return ctx.builder.CreateICmpSLT(a, b);
-        case Operator::Gt:
-            return ctx.builder.CreateICmpSGT(a, b);
-        case Operator::Le:
-            return ctx.builder.CreateICmpSLE(a, b);
-        case Operator::Ge:
-            return ctx.builder.CreateICmpSGE(a, b);
-        case Operator::EqEq:
-            return ctx.builder.CreateICmpEQ(a, b);
-        case Operator::NotEq:
-            return ctx.builder.CreateICmpNE(a, b);
-
-        //logical
-        case Operator::AndAnd:
-		    return ctx.builder.CreateAnd(int_to_bool(a), int_to_bool(b), "andtmp");
-		case Operator::OrOr:
-		    return ctx.builder.CreateOr(int_to_bool(a), int_to_bool(b), "ortmp");
-
-        // bitwise
-        case Operator::BitAnd:
-            return ctx.builder.CreateAnd(a, b);
-        case Operator::BitOr:
-            return ctx.builder.CreateOr(a, b);
-        case Operator::BitXor:
-            return ctx.builder.CreateXor(a, b);
-
-
-    	case Operator::Assign:{
-    		llvm::Value* ptr = nullptr;
-    		llvm::Type*  dest_ty = nullptr;
-
-		    if (auto* load = llvm::dyn_cast<llvm::LoadInst>(a)) {
-		        ptr = load->getPointerOperand();
-		        dest_ty = load->getType();
-		    } else {
-		    	TODO
-		    }
-		    llvm::Type* src_ty = b->getType();
-
-		    if (dest_ty != src_ty) {
-		        if (dest_ty->isIntegerTy() && src_ty->isIntegerTy()) {
-		            b = ctx.builder.CreateIntCast(b, dest_ty, /*isSigned=*/true, "assign_intcast");
-		        } else if (dest_ty->isFloatingPointTy() && src_ty->isIntegerTy()) {
-		            b = ctx.builder.CreateSIToFP(b, dest_ty, "assign_sitofp");
-		        } else if (dest_ty->isIntegerTy() && src_ty->isFloatingPointTy()) {
-		            b = ctx.builder.CreateFPToSI(b, dest_ty, "assign_fptosi");
-		        } else {
-		            return std::unexpected(BadType{bin_op,dest_ty,src_ty});
-		        }
-		    }
-
-		    ctx.builder.CreateStore(b, ptr);
-		    //returning b has the same semantics of C more or less
-		    return b;
-		}
-    	case Operator::Invalid:
-    		throw std::invalid_argument("uninit binop expression");
-    		break;
-    	default:
-    		TODO
-    	}
-    }
-
-    vresult_t operator()(const SubScript&) const {
-        TODO
-    }
-
-	vresult_t operator()(const Call& c) const {
-	    // compile the function expression
-	    vresult_t r = ctx.compile(*c.func);
-	    if (!r) return r;
-
-	    llvm::Function* fn = llvm::dyn_cast<llvm::Function>(*r);
-	    if (!fn)
-	        return std::unexpected(NotAFunction{*c.func, (*r)->getType()});
-
-	    llvm::FunctionType* fnty = fn->getFunctionType();
-
-	   	// check argument count
-	    if (fnty->getNumParams() != c.args.size())
-	        return std::unexpected(WrongArgCount{c, fnty});
-
-
-	    // compile arguments
-	    std::vector<llvm::Value*> args;
-	    args.reserve(c.args.size());
-	    for (auto& arg : c.args) {
-	        vresult_t v = ctx.compile(arg);
-	        if (!v) return v;
-	        args.push_back(*v);
+	        auto slot = std::make_unique<Value>();
+	        slot->v = ctx.builder.CreateAlloca(b.type.t, nullptr, var->text);
+	        
+	        Type* type = ctx.local_type_arena.emplace_back(std::make_unique<Type>(b.type)).get();//TODO better alocation scheme
+	        slot->type = {slot->v->getType(),type,nullptr};
+	        
+	        ctx.builder.CreateStore(b.v, slot->v);
+	        ctx.local_var_addrs[var->text] = std::move(slot);
+	        return b;
 	    }
 
+	    vresult_t ra = ctx.compile(*bin_op.a);
+	    if (!ra) return ra;
+	    a = *ra;
 
-	    // check argument types
-	    for (size_t i = 0; i < fnty->getNumParams(); ++i) {
-	        llvm::Type* expected = fnty->getParamType(i);
-	        llvm::Type* got = args[i]->getType();
-	        if (expected != got)
-	            return std::unexpected(BadType{c.args[i], expected, got});
+	    vresult_t rb = ctx.compile(*bin_op.b);
+	    if (!rb) return rb;
+	    b = *rb;
+
+	    // Check: currently only integer types allowed for all binops
+	    if (!a.type.t->isIntegerTy() || a.type.t != b.type.t){
+	        if(bin_op.op.kind == Operator::Assign)
+	        	return do_assign(a,b);
+
+	 		TODO
 	    }
 
-	    // all good, emit call
-	    llvm::CallInst* call = ctx.builder.CreateCall(fnty, fn, args, "function call");
-		call->setCallingConv(fn->getCallingConv());
-		return call;
+	    Value out{};
+	    out.type = a.type;
+
+	    switch (bin_op.op.kind) {
+	    // --- arithmetic ---
+	    case Operator::Plus:
+	        out.v = ctx.builder.CreateAdd(a.v, b.v);
+	        return out;
+	    case Operator::Minus:
+	        out.v = ctx.builder.CreateSub(a.v, b.v);
+	        return out;
+	    case Operator::Star:
+	        out.v = ctx.builder.CreateMul(a.v, b.v);
+	        return out;
+	    case Operator::Slash:
+	        out.v = ctx.builder.CreateSDiv(a.v, b.v);
+	        return out;
+	    case Operator::Percent:
+	        out.v = ctx.builder.CreateSRem(a.v, b.v);
+	        return out;
+
+	    // --- comparison ---
+	    case Operator::Lt:
+	        out.v = ctx.builder.CreateICmpSLT(a.v, b.v);
+	        out.type = Type{out.v->getType(), nullptr, nullptr};
+	        return out;
+	    case Operator::Gt:
+	        out.v = ctx.builder.CreateICmpSGT(a.v, b.v);
+	        out.type = Type{out.v->getType(), nullptr, nullptr};
+	        return out;
+	    case Operator::Le:
+	        out.v = ctx.builder.CreateICmpSLE(a.v, b.v);
+	        out.type = Type{out.v->getType(), nullptr, nullptr};
+	        return out;
+	    case Operator::Ge:
+	        out.v = ctx.builder.CreateICmpSGE(a.v, b.v);
+	        out.type = Type{out.v->getType(), nullptr, nullptr};
+	        return out;
+	    case Operator::EqEq:
+	        out.v = ctx.builder.CreateICmpEQ(a.v, b.v);
+	        out.type = Type{out.v->getType(), nullptr, nullptr};
+	        return out;
+	    case Operator::NotEq:
+	        out.v = ctx.builder.CreateICmpNE(a.v, b.v);
+	        out.type = Type{out.v->getType(), nullptr, nullptr};
+	        return out;
+
+	    // --- logical ---
+	    case Operator::AndAnd: {
+	        auto lhs = int_to_bool(a);
+	        if (!lhs) return lhs;
+	        auto rhs = int_to_bool(b);
+	        if (!rhs) return rhs;
+	        out.v = ctx.builder.CreateAnd(lhs->v, rhs->v, "andtmp");
+	        out.type = lhs->type;
+	        return out;
+	    }
+	    case Operator::OrOr: {
+	        auto lhs = int_to_bool(a);
+	        if (!lhs) return lhs;
+	        auto rhs = int_to_bool(b);
+	        if (!rhs) return rhs;
+	        out.v = ctx.builder.CreateOr(lhs->v, rhs->v, "ortmp");
+	        out.type = lhs->type;
+	        return out;
+	    }
+
+	    // --- bitwise ---
+	    case Operator::BitAnd:
+	        out.v = ctx.builder.CreateAnd(a.v, b.v);
+	        return out;
+	    case Operator::BitOr:
+	        out.v = ctx.builder.CreateOr(a.v, b.v);
+	        return out;
+	    case Operator::BitXor:
+	        out.v = ctx.builder.CreateXor(a.v, b.v);
+	        return out;
+
+	    // --- assignment ---
+	    case Operator::Assign: {
+	        TODO//error a is an int
+	    }
+
+	    case Operator::Invalid:
+	        throw std::invalid_argument("uninit binop expression");
+
+	    default:
+	        TODO;
+	    }
+
+	    return out; // only reached for TODOs / incomplete branches
 	}
 
 
 
+
+    vresult_t operator()(const SubScript&) const {
+        TODO;
+    }
+
+    vresult_t operator()(const Call& c) const {
+        vresult_t rf = ctx.compile(*c.func);
+        if (!rf) return rf;
+        Value fn = *rf;
+
+        // fn.v should be a function pointer, type should be FunctionType
+        TODO;
+    }
 };
 
 vresult_t CompileContext::compile(const Expression& exp) {
     return std::visit(ExpressionVisitor{*this}, exp.inner);
 }
 
-
 struct StatmentVisitor {
     CompileContext& ctx;
-    
-    result_t compile_block(const Block& b) const {
-        for(auto it =b.parts.begin();it!=b.parts.end();it++){
-			result_t r = ctx.compile(*it);
-			if(!r) return r;
-		}
 
-		return {};
+    result_t compile_block(const Block& b) const {
+        for (auto& stmt : b.parts) {
+            result_t r = ctx.compile(stmt);
+            if (!r) return r;
+        }
+        return {};
     }
 
     result_t operator()(const Invalid&) const {
-        throw std::invalid_argument("uninit statment");
+        throw std::invalid_argument("uninit statement");
     }
 
-    result_t operator()(const While&) const {
-        TODO
-    }
+    result_t operator()(const While&) const { TODO; }
 
-    result_t operator()(const If& i) const {
-        vresult_t rcond = ctx.compile(i.cond);
-        if(!rcond) return std::unexpected(std::move(rcond).error());
-
-        vresult_t rcond_bool = ExpressionVisitor{ctx}.to_bool(*rcond);
-        if(!rcond_bool) std::unexpected(std::move(rcond_bool).error());
-
-        llvm::Value* cond = *rcond_bool;
-       	llvm::Function* func = ctx.builder.GetInsertBlock()->getParent();
-
-		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, "then", func);
-		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, "else", func);
-		auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
-        ctx.builder.CreateCondBr(cond, bthen, belse);
-
-        ctx.builder.SetInsertPoint(bthen);
-        result_t rthen = compile_block(i.block);
-        if(!rthen) return rthen;
-        if (!bthen->getTerminator())
-        	ctx.builder.CreateBr(bmerge);
-
-        ctx.builder.SetInsertPoint(belse);
-        result_t relse = compile_block(i.else_part);
-        if(!relse) return relse;
-        if (!belse->getTerminator())
-        	ctx.builder.CreateBr(bmerge);
-
-        ctx.builder.SetInsertPoint(bmerge);
-        return {};
-    }
+    result_t operator()(const If&) const { TODO; }
 
     result_t operator()(const Return& r) const {
         vresult_t value = ctx.compile(r.val);
-        if(!value) 
-        	return std::unexpected<CompileError>( std::move(value).error());
-        
-
-        ctx.builder.CreateRet(*value);
+        if (!value)
+            return std::unexpected<CompileError>(std::move(value).error());
+        ctx.builder.CreateRet(value->v);
         return {};
     }
 
-    result_t operator()(const Block& b) const {
-        return compile_block(b);
-    }
+    result_t operator()(const Block& b) const { return compile_block(b); }
 
     result_t operator()(const Basic& b) const {
         return ctx.compile(b.inner).transform([](auto&&) {});
@@ -311,93 +310,109 @@ struct StatmentVisitor {
 
 result_t CompileContext::compile(const Statement& stmt) {
     result_t r = std::visit(StatmentVisitor{*this}, stmt.inner);
-    if(r || std::holds_alternative<StatmentError>(r.error())) return r;
-
-    return std::unexpected(StatmentError{stmt,std::make_unique<CompileError>(std::move(r).error())});
+    if (r || std::holds_alternative<StatmentError>(r.error())) return r;
+    return std::unexpected(
+        StatmentError{stmt, std::make_unique<CompileError>(std::move(r).error())});
 }
-
-
 
 struct GlobalVisitor {
     CompileContext& ctx;
-    
-    llvm::Function* generate_func(const FuncDec& dec) const {
-    	std::vector<llvm::Type*> arg_types; //can be optimized
-    	for(auto it = dec.args.begin();it!=dec.args.end();it++){
-    		arg_types.push_back(ctx.int_type);
-    	}
 
-    	auto sig = llvm::FunctionType::get(ctx.int_type, arg_types,false);
+    Value* generate_func(const FuncDec& dec) const {
+        std::vector<llvm::Type*> arg_llvm_types;
+        std::vector<Type> arg_types;
+        
+        for (auto& a : dec.args){
+            arg_types.push_back(ctx.int_type);
+            arg_llvm_types.push_back(ctx.int_type.t);
+        }
 
-    	llvm::Function* fn = llvm::Function::Create(
-		    sig,
-		    llvm::Function::ExternalLinkage,//we figure this later
-		    dec.name.text,
-		    *ctx.mod
-		);
+        Type ret = ctx.int_type;
 
-    	if (dec.is_c)
-		    fn->setCallingConv(llvm::CallingConv::C);
-		else
-		    fn->setCallingConv(llvm::CallingConv::Fast);
+        auto sig = llvm::FunctionType::get(ret.t, arg_llvm_types, false);
+        llvm::Function* fn = llvm::Function::Create(
+            sig, llvm::Function::ExternalLinkage, dec.name.text, *ctx.mod);
 
-		ctx.consts[dec.name.text] = fn;
+        if (dec.is_c)
+            fn->setCallingConv(llvm::CallingConv::C);
+        else
+            fn->setCallingConv(llvm::CallingConv::Fast);
 
-		return fn;
-	}
 
+        auto* ft = ctx.func_defs.emplace_back(std::make_unique<FunctionType>(
+        		FunctionType{
+        			 fn->getFunctionType(),
+        			 fn->getCallingConv(),
+        			 ret,
+        			 std::move(arg_types),
+        		}
+        	)).get();
+
+        auto val = std::make_unique<Value>(
+        	Value{fn,
+        		Type{fn->getType(),nullptr,ft}
+        	}
+        );
+
+        Value* ans = val.get();
+        ctx.global_consts[dec.name.text] = std::move(val);
+        return ans;
+    }
 
     result_t operator()(const Invalid&) const {
-        throw std::invalid_argument("uninit global statment");
+        throw std::invalid_argument("uninit global statement");
     }
 
     result_t operator()(const FuncDec& dec) const {
-    	generate_func(dec);
-    	return {};
+        generate_func(dec);
+        return {};
     }
 
     result_t operator()(const Function& f) const {
-        llvm::Function* fn = generate_func(f);
+        Value* fn_val = generate_func(f);
+        llvm::Function* fn = static_cast<llvm::Function*>(fn_val->v);
+        FunctionType& fn_type = *fn_val->type.func;
+
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(*ctx.ctx, "entry", fn);
-		ctx.builder.SetInsertPoint(entry);
+        ctx.builder.SetInsertPoint(entry);
 
+        ctx.clear_locals();
+        
+        assert(f.args.size()==fn_type.args.size());
 
-		ctx.vars.clear();
+        auto it = f.args.begin();
+        auto it_types = fn_type.args.begin();
 
-		auto it = f.args.begin();
-		for (llvm::Argument &arg : fn->args()) {
-		    llvm::AllocaInst* slot =
-		        ctx.builder.CreateAlloca(ctx.int_type, nullptr, it->text);
+        for (llvm::Argument& arg : fn->args()) {
+            auto slot = std::make_unique<Value>();
+            slot->v = ctx.builder.CreateAlloca(it_types->t, nullptr, it->text);
+            slot->type.t = slot->v->getType();
+            slot->type.stored = &*it_types;
 
-		    ctx.builder.CreateStore(&arg, slot);
-		    ctx.vars[it->text] = slot;
-		    ++it;
-		}
+            ctx.builder.CreateStore(&arg, slot->v);
+            ctx.local_var_addrs[it->text] = std::move(slot);
+            ++it;
+            ++it_types;
+        }
+        assert(it == f.args.end());
 
-		assert(it == f.args.end());
+        for (auto& stmt : f.body.parts) {
+            result_t r = ctx.compile(stmt);
+            if (!r) return r;
+        }
 
+        if (f.body.parts.empty() ||
+            !std::holds_alternative<Return>(f.body.parts.back().inner))
+            TODO;
 
-		for(auto it =f.body.parts.begin();it!=f.body.parts.end();it++){
-			result_t r = ctx.compile(*it);
-			if(!r) return r;
-		}
-
-		if(f.body.parts.empty() || !std::holds_alternative<Return>(f.body.parts.back().inner))
-			TODO
-
-		return {};
-
+        return {};
     }
 
-    result_t operator()(const Basic& b) const {
-        return StatmentVisitor{ctx}(b);
-    }
+    result_t operator()(const Basic& b) const { return StatmentVisitor{ctx}(b); }
 };
 
 result_t CompileContext::compile(const Global& global) {
     return std::visit(GlobalVisitor{*this}, global.inner);
 }
 
-
-
-}//small_lang
+} // namespace small_lang

@@ -92,12 +92,12 @@ struct BinOp : Token{
 	Op op;
 };
 
-struct Type : Token {
+struct TypeDec : Token {
     std::string_view name;
 };
 
 struct TypeCast : Token {
-    Type type;
+    TypeDec type;
     std::unique_ptr<Expression> exp;//in some cases allowed to be null when we wana refer to a type directly
 };
 

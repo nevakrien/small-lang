@@ -10,14 +10,20 @@ using namespace small_lang;
 int main() {
     std::cout << "=== Small-Lang test ===\n";
 
+    // std::string_view src = R"(
+    //     fn abs(a){
+    //     	if(a<0) return -a;
+    //     	return a;
+    //     }
+
+    //     cfn main() {
+    //     	return abs(1)-abs(-1);
+    //     }
+    // )";
     std::string_view src = R"(
-        fn abs(a){
-        	if(a<0) return -a;
-        	return a;
-        }
 
         cfn main() {
-        	return abs(1)-abs(-1);
+        	return 1+1;
         }
     )";
 

@@ -413,7 +413,7 @@ inline ParseError parse_call_args(ParseStream& stream,Call& out){
 	return stream.consume(")");
 }
 
-inline ParseError parse_type(ParseStream& stream,Type& type){
+inline ParseError parse_type(ParseStream& stream,TypeDec& type){
 	stream.skip_whitespace();
 	const char* start = stream.marker();
 
