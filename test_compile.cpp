@@ -11,16 +11,15 @@ int main() {
     std::cout << "=== Small-Lang test ===\n";
 
     std::string_view src = R"(
-        cfn abs(a);
+        fn abs(a){
+        	if(a<0) return 0-a;
+        	return a;
+        }
+
         cfn main() {
-        	return abs(1);
+        	return abs(1)-abs(0-1);
         }
     )";
-    //  std::string_view src = R"(
-    //     cfn main() {
-    //         return 1+2;
-    //     }
-    // )";
 
     RunOptions opt;
     opt.print_globals = true;

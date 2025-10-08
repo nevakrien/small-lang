@@ -234,6 +234,15 @@ vresult_t CompileContext::compile(const Expression& exp) {
 
 struct StatmentVisitor {
     CompileContext& ctx;
+    
+    result_t compile_block(const Block& b) const {
+        for(auto it =b.parts.begin();it!=b.parts.end();it++){
+			result_t r = ctx.compile(*it);
+			if(!r) return r;
+		}
+
+		return {};
+    }
 
     result_t operator()(const Invalid&) const {
         throw std::invalid_argument("uninit statment");
@@ -243,8 +252,35 @@ struct StatmentVisitor {
         TODO
     }
 
-    result_t operator()(const If&) const {
-        TODO
+    result_t operator()(const If& i) const {
+        vresult_t rcond = ctx.compile(i.cond);
+        if(!rcond) return std::unexpected(std::move(rcond).error());
+
+        vresult_t rcond_bool = ExpressionVisitor{ctx}.to_bool(*rcond);
+        if(!rcond_bool) std::unexpected(std::move(rcond_bool).error());
+
+        llvm::Value* cond = *rcond_bool;
+       	llvm::Function* func = ctx.builder.GetInsertBlock()->getParent();
+
+		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, "then", func);
+		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, "else", func);
+		auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
+        ctx.builder.CreateCondBr(cond, bthen, belse);
+
+        ctx.builder.SetInsertPoint(bthen);
+        result_t rthen = compile_block(i.block);
+        if(!rthen) return rthen;
+        if (!bthen->getTerminator())
+        	ctx.builder.CreateBr(bmerge);
+
+        ctx.builder.SetInsertPoint(belse);
+        result_t relse = compile_block(i.else_part);
+        if(!relse) return relse;
+        if (!belse->getTerminator())
+        	ctx.builder.CreateBr(bmerge);
+
+        ctx.builder.SetInsertPoint(bmerge);
+        return {};
     }
 
     result_t operator()(const Return& r) const {
@@ -258,12 +294,7 @@ struct StatmentVisitor {
     }
 
     result_t operator()(const Block& b) const {
-        for(auto it =b.parts.begin();it!=b.parts.end();it++){
-			result_t r = ctx.compile(*it);
-			if(!r) return r;
-		}
-
-		return {};
+        return compile_block(b);
     }
 
     result_t operator()(const Basic& b) const {

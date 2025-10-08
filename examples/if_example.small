@@ -1,0 +1,8 @@
+fn abs(a){
+	if(a<0) return 0-a;
+	return a;
+}
+
+cfn main() {
+	return abs(1)-abs(0-1);
+}
