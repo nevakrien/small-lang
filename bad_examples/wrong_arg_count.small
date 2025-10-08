@@ -1,0 +1,8 @@
+fn add(a, b) {
+    return a + b;
+}
+
+cfn main() {
+    x = add(1);       # wrong number of arguments (expects 2)
+    return x;
+}

@@ -138,14 +138,35 @@ struct ParseStream{
 		current={current.data()+amount,current.size()-amount};
 	}
 
+
 	bool skip_whitespace(){
 		bool skiped = false;
 		while (!current.empty() && std::isspace(current.front())) {
 	        skiped = true;
 	        current.remove_prefix(1);
+	       
 	    }
 
 	    return skiped;	    
+	}
+
+	bool skip_comments(){
+		bool skiped = skip_whitespace();
+
+		while(!current.empty() && 
+			(current.front()=='#'))
+		{
+        	while(!current.empty() && 
+				(current.front()!='\n'))
+        	{
+        		
+        		current.remove_prefix(1);
+        	}	
+
+        	skiped = true;
+        	skip_whitespace();
+        }
+        return skiped;
 	}
 
 
@@ -154,7 +175,7 @@ struct ParseStream{
 	}
 
 	bool empty(){
-		skip_whitespace();
+		skip_comments();
 		return current.empty();
 	}
 
@@ -167,7 +188,7 @@ struct ParseStream{
 	}
 
 	bool try_consume(std::string_view pre){
-		skip_whitespace();
+		skip_comments();
 		if(starts_with(pre)){
 			advance(pre.size());
 			return true;
@@ -177,7 +198,7 @@ struct ParseStream{
 	}
 
 	bool try_consume(std::string_view pre,Token& out){
-		skip_whitespace();
+		skip_comments();
 		auto* start = current.data();
 		if(!try_consume(pre))
 			return false;
@@ -200,7 +221,7 @@ struct ParseStream{
 	std::string_view found_token(){
 		std::string_view backup = current;
 
-		skip_whitespace();
+		skip_comments();
 		if(current.empty()){
 			current = backup;
 			return "EOF";
@@ -229,7 +250,7 @@ struct ParseStream{
 	}
 
 	std::string_view try_name(){
-		skip_whitespace();
+		skip_comments();
 		if(current.empty()|| !std::isalpha(current.front()))
 			return {nullptr,0};
 
@@ -266,7 +287,7 @@ struct ParseStream{
 	}
 
 	Op peek_operator() {
-	    skip_whitespace();
+	    skip_comments();
 	    if (current.empty())
 	        return {};
 
@@ -300,7 +321,7 @@ struct ParseStream{
 	}
 
 	Op try_operator() {
-	    skip_whitespace();
+	    skip_comments();
 	    const Op op = peek_operator();
 	    if (!op) return {};
 
@@ -313,7 +334,7 @@ struct ParseStream{
 
 
 	Num try_number() {
-	    skip_whitespace();
+	    skip_comments();
 	    if (current.empty())
 	        return Num{};
 
@@ -346,7 +367,7 @@ inline ParseError parse_expression(ParseStream& stream,Expression& exp,Bp min_bp
 
 
 inline ParseError parse_atom(ParseStream& stream,Expression& out){
-	stream.skip_whitespace();
+	stream.skip_comments();
 
 	Num n = stream.try_number();
 	if(n.text.size()){
@@ -366,7 +387,7 @@ inline ParseError parse_atom(ParseStream& stream,Expression& out){
 inline ParseError parse_paren_expression(ParseStream& stream,Expression& out){
 	ParseError res;
 	
-	stream.skip_whitespace();
+	stream.skip_comments();
 	const char* start = stream.marker();
 
 	res =  stream.consume("(");
@@ -414,7 +435,7 @@ inline ParseError parse_call_args(ParseStream& stream,Call& out){
 }
 
 inline ParseError parse_type(ParseStream& stream,TypeDec& type){
-	stream.skip_whitespace();
+	stream.skip_comments();
 	const char* start = stream.marker();
 
 	ParseError res = stream.consume("@");
@@ -431,7 +452,7 @@ inline ParseError parse_type(ParseStream& stream,TypeDec& type){
 inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp){
 	ParseError res;
 	
-	stream.skip_whitespace();
+	stream.skip_comments();
 	const char* start = stream.marker();
 
 	//recursively get the start
@@ -465,7 +486,7 @@ inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp
 
 	for(;;){
 		//special cases first
-		stream.skip_whitespace();
+		stream.skip_comments();
 		if(stream.starts_with("(")){
 			if(CALL_BP < min_bp) break;
 			Call call;
@@ -540,7 +561,7 @@ inline ParseError parse_expression(ParseStream& stream,Expression& out,Bp min_bp
 
 inline ParseError parse_proper_block(ParseStream& stream,Block& out){
 	ParseError res = ParseError();	
-	stream.skip_whitespace();
+	stream.skip_comments();
 	const char* start = stream.marker();
 
 	res = stream.consume("{");
@@ -569,7 +590,7 @@ inline ParseError parse_block(ParseStream& stream,Block& out){
 		return ParseError();
 	}
 
-	stream.skip_whitespace();
+	stream.skip_comments();
 	if(stream.starts_with("{"))
 		return parse_proper_block(stream,out);
 	
@@ -583,7 +604,7 @@ inline ParseError parse_block(ParseStream& stream,Block& out){
 
 inline ParseError parse_statement(ParseStream& stream,Statement& out){
 	ParseError res;
-	stream.skip_whitespace();
+	stream.skip_comments();
 	const char* start = stream.marker();
 	
 	if(stream.starts_with("{")){
@@ -677,7 +698,7 @@ inline ParseError parse_func_args(ParseStream& stream,FuncDec& out){
 
 inline ParseError parse_global(ParseStream& stream,Global& out){
 	ParseError res;
-	stream.skip_whitespace();
+	stream.skip_comments();
 	const char* start = stream.marker();
 
 	FuncDec sig;

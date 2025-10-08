@@ -64,7 +64,8 @@ struct ExpressionVisitor {
 	    }
 	}
 
-	result_t implicit_cast(Value& val, const Type& target_type) const {
+	template <typename D>
+	result_t implicit_cast(Value& val, const Type& target_type,const D& debug) const {
 	    llvm::Type* src = val.type.t;
 	    llvm::Type* dst = target_type.t;
 
@@ -83,12 +84,11 @@ struct ExpressionVisitor {
 	        }
 
 	        // narrowing is not implicit
-	        // return std::unexpected(BadType{Invalid{}, dst, src});
+	        return std::unexpected(BadType<D>{debug, target_type, val.type});
 	    }
-	    TODO//add proper source maps for error reporting
 
 	    // TODO: add the rest
-	    // return std::unexpected(BadType{Invalid{}, dst, src});
+	    return std::unexpected(BadType<D>{debug, target_type, val.type});
 	}
 
 
@@ -184,11 +184,11 @@ struct ExpressionVisitor {
 
 	
 
-	
-	vresult_t do_assign(Value a,Value b) const{
+	template <typename D>
+	vresult_t do_assign(Value a,Value b,const D& debug) const{
 		if(!a.address) TODO;//junk assigment
 		Value& mem = *a.address;
-		result_t r = implicit_cast(b,*mem.type.stored);
+		result_t r = implicit_cast(b,*mem.type.stored,debug);
 		if(!r) return std::unexpected(std::move(r).error());
 
 		ctx.builder.CreateStore(b.v, mem.v);
@@ -227,7 +227,7 @@ struct ExpressionVisitor {
 	    b = *rb;
 
 	    if(bin_op.op.kind == Operator::Assign)
-	        	return do_assign(a,b);
+	        	return do_assign(a,b,bin_op);
 
 	  	// --- type normalization ---
 		if (a.type.t->isIntegerTy() && b.type.t->isIntegerTy()) {
@@ -351,7 +351,7 @@ struct ExpressionVisitor {
 
 	    // argument count check
 	    if (fnty->args.size() != c.args.size())
-	        return std::unexpected(WrongArgCount{c, fnty->ft});
+	        return std::unexpected(WrongArgCount{c, fnty});
 
 	    // compile arguments
 	    std::vector<llvm::Value*> arg_vals;
@@ -365,7 +365,7 @@ struct ExpressionVisitor {
 	        const Type& expected = fnty->args[i];
 	        const Type& got = a.type;
 	        if (!types_exactly_equal(expected, got))
-	            return std::unexpected(BadType{c.args[i], expected.t, got.t});
+	            return std::unexpected(BadType{c.args[i], expected, got});
 	    }
 
 	    // create call instruction
@@ -418,7 +418,7 @@ struct StatmentVisitor {
 	    Value cond_bool = *rcond_bool;
 	    llvm::Value* cond = cond_bool.v;
 	    llvm::Function* func = ctx.builder.GetInsertBlock()->getParent();
-	    
+
 		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, "then", func);
 		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, "else", func);
 		auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
@@ -445,7 +445,7 @@ struct StatmentVisitor {
         if (!value)
             return std::unexpected<CompileError>(std::move(value).error());
         
-        result_t res = ExpressionVisitor{ctx}.implicit_cast(*value,ctx.current_func->ret);
+        result_t res = ExpressionVisitor{ctx}.implicit_cast(*value,ctx.current_func->ret,r);
         if(!res) return res;
 
         ctx.builder.CreateRet(value->v);

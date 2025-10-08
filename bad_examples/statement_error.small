@@ -1,0 +1,10 @@
+fn nested(a) {
+    return a + 1;
+}
+
+cfn main() {
+    if (nested(3)) {
+        y = z + 1;    # inner error (MissingVar) wrapped in StatmentError
+    }
+    return 0;
+}

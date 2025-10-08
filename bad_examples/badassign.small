@@ -1,0 +1,11 @@
+fn helper(a) {
+    return a;
+}
+
+cfn main() {
+    a = 1;
+    b = helper;
+    b = a;
+    b(a);
+    return 0;
+}

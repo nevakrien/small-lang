@@ -1,0 +1,8 @@
+fn helper(a) {
+    return a;
+}
+
+cfn main() {
+    x = helper(helper);  # suppose helper expects int, got float
+    return x;
+}

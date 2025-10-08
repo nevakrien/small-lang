@@ -10,7 +10,8 @@
 namespace small_lang {
 
 // helper: get string representation of llvm::Type
-inline std::string to_string(const llvm::Type* t) {
+inline std::string to_string(const Type& type) {
+    llvm::Type* t = type.t;
     if (!t) return "(null)";
     std::string s;
     llvm::raw_string_ostream rso(s);
@@ -47,7 +48,7 @@ inline std::ostream& operator<<(std::ostream& os, const WrongArgCount& e) {
     os << "WrongArgCount:\n"
        << "  call: " << e.call << "\n";
     if (e.t)
-        os << "  expected arg count: " << e.t->getNumParams() << "\n";
+        os << "  expected arg count: " << e.t->args.size() << "\n";
     else
         os << "  expected arg count: (unknown)\n";
     return os;

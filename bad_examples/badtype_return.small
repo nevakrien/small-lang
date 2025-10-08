@@ -1,0 +1,8 @@
+fn helper() {
+    return 1;         # returns int
+}
+
+cfn main() {
+    x = helper();
+    return helper;    # returning function instead of value
+}

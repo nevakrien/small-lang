@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-set -u  # keep -u (undefined var error), but drop -e so loop continues on failure
-set -o pipefail
+set -u  # undefined variable error
+set -o pipefail  # catch pipeline errors
 
-EXAMPLES_DIR="$(dirname "$0")/examples"
+# --- Arguments ---
+EXAMPLES_DIR="${1:-$(dirname "$0")/examples}"   # allow overriding the directory
 SMALL_BIN="$(dirname "$0")/build/small"
 
 if [[ ! -x "$SMALL_BIN" ]]; then
@@ -12,12 +13,18 @@ if [[ ! -x "$SMALL_BIN" ]]; then
     exit 1
 fi
 
-echo "=== Running all .small examples ==="
+if [[ ! -d "$EXAMPLES_DIR" ]]; then
+    echo "Error: example directory not found: $EXAMPLES_DIR"
+    exit 1
+fi
+
+echo "=== Running all .small examples in: $EXAMPLES_DIR ==="
 echo
 
 failures=0
 failed_files=()
 
+# --- Loop over all .small files ---
 for file in "$EXAMPLES_DIR"/*.small; do
     [[ -e "$file" ]] || continue
     echo ">>> Running: $(basename "$file")"
@@ -31,6 +38,7 @@ for file in "$EXAMPLES_DIR"/*.small; do
     echo
 done
 
+# --- Report summary ---
 if (( failures > 0 )); then
     echo "=== $failures example(s) failed ==="
     printf ' - %s\n' "${failed_files[@]}"

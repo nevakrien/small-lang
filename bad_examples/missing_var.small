@@ -1,0 +1,4 @@
+cfn main() {
+    x = y + 1;        # 'y' is not defined anywhere
+    return x;
+}

@@ -12,39 +12,6 @@
 
 namespace small_lang {
 
-	struct MissingVar {
-		Var var;
-	};
-
-	struct NotAFunction {
-	    const Expression& exp;
-	    llvm::Type* got;
-	};
-
-	struct CantBool {
-	    llvm::Type* got;
-	};
-
-	struct WrongArgCount {
-	    const Call& call;
-	    llvm::FunctionType* t;//can give count
-	};
-
-	template <typename T>
-	struct BadType {
-	    const T& made;
-	    llvm::Type* expected;
-	    llvm::Type* got;
-	};
-
-	
-	struct StatmentError;
-
-	using CompileError = std::variant<MissingVar,NotAFunction,CantBool,BadType<Expression>,BadType<BinOp>,WrongArgCount,StatmentError>;
-	struct StatmentError {
-		const Statement& parent;
-		std::unique_ptr<CompileError> source;
-	};
 
 
 	struct FunctionType;
@@ -70,6 +37,41 @@ namespace small_lang {
 
 		//optionals (live in function/global storage)
 		Value* address;
+	};
+
+//=============ERRORS=========
+	struct MissingVar {
+		Var var;
+	};
+
+	struct NotAFunction {
+	    const Expression& exp;
+	    Type got;
+	};
+
+	struct CantBool {
+	    Type got;
+	};
+
+	struct WrongArgCount {
+	    const Call& call;
+	    FunctionType* t;//can give count
+	};
+
+	template <typename T>
+	struct BadType {
+	    const T& made;
+	    Type expected;
+	    Type got;
+	};
+
+	
+	struct StatmentError;
+
+	using CompileError = std::variant<MissingVar,NotAFunction,CantBool,BadType<Expression>,BadType<BinOp>,BadType<Return>,WrongArgCount,StatmentError>;
+	struct StatmentError {
+		const Statement& parent;
+		std::unique_ptr<CompileError> source;
 	};
 
 	// using vresult_t = std::expected<llvm::Value*,CompileError>;
