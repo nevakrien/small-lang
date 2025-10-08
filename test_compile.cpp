@@ -12,12 +12,12 @@ int main() {
 
     std::string_view src = R"(
         fn abs(a){
-        	if(a<0) return 0-a;
+        	if(a<0) return -a;
         	return a;
         }
 
         cfn main() {
-        	return abs(1)-abs(0-1);
+        	return abs(1)-abs(-1);
         }
     )";
 

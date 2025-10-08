@@ -59,6 +59,10 @@ struct ExpressionVisitor {
     	llvm::Value *a = *ra;
 
     	switch(pre_op.op.kind){
+    	case Operator::Plus:
+    		return a;
+    	case Operator::Minus:
+    		return ctx.builder.CreateNeg(a, "neg");
     	case Operator::Not:{
 		    llvm::Value* zero = llvm::ConstantInt::get(a->getType(), 0);
 		    return ctx.builder.CreateICmpEQ(a, zero, "logical_not");
