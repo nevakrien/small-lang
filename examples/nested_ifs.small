@@ -3,7 +3,7 @@ cfn main() {
     b = 2;
     c = 3;
     if (a < b) {
-        if (b < c) return 99;
+        if (b < c) return 0;
         else return 77;
     }
     return 11;

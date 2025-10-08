@@ -542,7 +542,6 @@ struct StatmentVisitor :VisitorBase {
 
 		auto bthen  = llvm::BasicBlock::Create(*ctx.ctx, concat_statements("then",i.block.text), func);
 		auto belse  = llvm::BasicBlock::Create(*ctx.ctx, concat_statements("else",i.else_part.text), func);
-		auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
         ctx.builder.CreateCondBr(cond, bthen, belse);
 
         //print("in %p \n",ctx.builder.GetInsertBlock());
@@ -551,24 +550,40 @@ struct StatmentVisitor :VisitorBase {
         ctx.builder.SetInsertPoint(bthen);
         result_t rthen = compile_block(i.block);
         if(!rthen) return rthen;
-        if (!bthen->getTerminator()){
-        	//print("adding merge in %p to %p\n",ctx.builder.GetInsertBlock(),bmerge);
-        	ctx.builder.CreateBr(bmerge);
-        }
+        auto then_end = ctx.builder.GetInsertBlock();
+
 
         //print("in %p \n",ctx.builder.GetInsertBlock());
         //print("setting insertion at %p \n",belse);
         ctx.builder.SetInsertPoint(belse);
         result_t relse = compile_block(i.else_part);
         if(!relse) return relse;
-        if (!belse->getTerminator()){
-        	//print("adding merge in %p to %p\n",ctx.builder.GetInsertBlock(),bmerge);
-        	ctx.builder.CreateBr(bmerge);
-        }
+        auto else_end = ctx.builder.GetInsertBlock();
 
-        //print("in %p \n",ctx.builder.GetInsertBlock());
-        //print("setting insertion at %p \n",bmerge);
-        ctx.builder.SetInsertPoint(bmerge);
+        
+
+        //cant have empty block
+        //this is a partial solutin we need a better check on blocks being dead
+        bool then_open = !then_end->getTerminator();
+        bool else_open = !else_end->getTerminator();
+        if (then_open||else_open) {
+		    auto bmerge = llvm::BasicBlock::Create(*ctx.ctx, "merge", func);
+	        
+	        if (then_open){
+	        	//print("adding merge in %p to %p\n",ctx.builder.GetInsertBlock(),bmerge);
+	        	ctx.builder.SetInsertPoint(then_end);
+	        	ctx.builder.CreateBr(bmerge);
+	        }
+
+	        if (else_open){
+	        	//print("adding merge in %p to %p\n",ctx.builder.GetInsertBlock(),bmerge);
+	        	ctx.builder.SetInsertPoint(else_end);
+	        	ctx.builder.CreateBr(bmerge);
+	        }
+
+	        ctx.builder.SetInsertPoint(bmerge);
+		}
+
         return {};
 	}
 
