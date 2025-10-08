@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u  # keep -u (undefined var error), but drop -e so loop continues on failure
+set -o pipefail
 
 EXAMPLES_DIR="$(dirname "$0")/examples"
 SMALL_BIN="$(dirname "$0")/build/small"
@@ -14,8 +15,8 @@ fi
 echo "=== Running all .small examples ==="
 echo
 
-# Track failures
 failures=0
+failed_files=()
 
 for file in "$EXAMPLES_DIR"/*.small; do
     [[ -e "$file" ]] || continue
@@ -25,12 +26,14 @@ for file in "$EXAMPLES_DIR"/*.small; do
     else
         echo "✗ Failed: $file"
         ((failures++))
+        failed_files+=("$file")
     fi
     echo
 done
 
 if (( failures > 0 )); then
     echo "=== $failures example(s) failed ==="
+    printf ' - %s\n' "${failed_files[@]}"
     exit 1
 else
     echo "=== All examples passed successfully ==="

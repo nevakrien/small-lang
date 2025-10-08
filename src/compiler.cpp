@@ -5,6 +5,39 @@ namespace small_lang {
 
 struct ExpressionVisitor {
     CompileContext& ctx;
+    
+    bool types_exactly_equal(const Type& a, const Type& b) const {
+	    if (a.t == b.t)
+	        return true;
+
+	    if (a.t->getTypeID() != b.t->getTypeID())
+	        return false;
+
+	    // function type comparison
+	    if (a.func && b.func) {
+	        const FunctionType* fa = a.func;
+	        const FunctionType* fb = b.func;
+
+	        if (fa->cc != fb->cc)
+	            return false;
+	        if (!types_exactly_equal(fa->ret, fb->ret))
+	            return false;
+	        if (fa->args.size() != fb->args.size())
+	            return false;
+
+	        for (size_t i = 0; i < fa->args.size(); ++i)
+	            if (!types_exactly_equal(fa->args[i], fb->args[i]))
+	                return false;
+
+	        return true;
+	    }
+
+	    if (a.stored && b.stored)
+	        return types_exactly_equal(*a.stored, *b.stored);
+
+	    //TODO extend to support aggregate/struct comparison
+	    return false;
+	}
 
     vresult_t to_bool(Value val) const {
         // originally created bool comparisons depending on type
@@ -152,10 +185,12 @@ struct ExpressionVisitor {
 	    if (!rb) return rb;
 	    b = *rb;
 
+	    if(bin_op.op.kind == Operator::Assign)
+	        	return do_assign(a,b);
+	        
 	    // Check: currently only integer types allowed for all binops
 	    if (!a.type.t->isIntegerTy() || a.type.t != b.type.t){
-	        if(bin_op.op.kind == Operator::Assign)
-	        	return do_assign(a,b);
+	        
 
 	 		TODO
 	    }
@@ -261,13 +296,46 @@ struct ExpressionVisitor {
     }
 
     vresult_t operator()(const Call& c) const {
-        vresult_t rf = ctx.compile(*c.func);
-        if (!rf) return rf;
-        Value fn = *rf;
+	    vresult_t rf = ctx.compile(*c.func);
+	    if (!rf) return rf;
+	    Value fn_val = *rf;
 
-        // fn.v should be a function pointer, type should be FunctionType
-        TODO;
-    }
+	    // must be a function
+	    if (!fn_val.type.func || !fn_val.type.func->ft)
+	        return std::unexpected(NotAFunction{*c.func, fn_val.type.t});
+
+	    FunctionType* fnty = fn_val.type.func;
+
+	    // argument count check
+	    if (fnty->args.size() != c.args.size())
+	        return std::unexpected(WrongArgCount{c, fnty->ft});
+
+	    // compile arguments
+	    std::vector<llvm::Value*> arg_vals;
+	    arg_vals.reserve(c.args.size());
+	    for (size_t i = 0; i < c.args.size(); ++i) {
+	        vresult_t ra = ctx.compile(c.args[i]);
+	        if (!ra) return ra;
+	        Value a = *ra;
+	        arg_vals.push_back(a.v);
+
+	        const Type& expected = fnty->args[i];
+	        const Type& got = a.type;
+	        if (!types_exactly_equal(expected, got))
+	            return std::unexpected(BadType{c.args[i], expected.t, got.t});
+	    }
+
+	    // create call instruction
+	    llvm::CallInst* call = ctx.builder.CreateCall(fnty->ft, fn_val.v, arg_vals, "function call");
+	    call->setCallingConv(fnty->cc);
+
+	    // wrap result
+	    Value out{};
+	    out.v = call;
+	    out.type = fnty->ret;
+	    return out;
+	}
+
 };
 
 vresult_t CompileContext::compile(const Expression& exp) {
@@ -350,7 +418,8 @@ struct GlobalVisitor {
 
         auto val = std::make_unique<Value>(
         	Value{fn,
-        		Type{fn->getType(),nullptr,ft}
+        		Type{fn->getType(),nullptr,ft},
+        		nullptr
         	}
         );
 
