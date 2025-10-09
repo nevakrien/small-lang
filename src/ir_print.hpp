@@ -9,15 +9,49 @@
 
 namespace small_lang {
 
-// helper: get string representation of llvm::Type
 inline std::string to_string(const Type& type) {
-    llvm::Type* t = type.t;
-    if (!t) return "(null)";
+    if (!type.t)
+        return "(null type)";
+
     std::string s;
     llvm::raw_string_ostream rso(s);
-    t->print(rso);
+
+    // Base LLVM type
+    rso << "[llvm:";
+    type.t->print(rso);
+    rso << "]";
+
+    // Stored type (e.g. pointer to element type)
+    if (type.stored && type.stored->t) {
+        rso << " -> stored(";
+        type.stored->t->print(rso);
+        rso << ")";
+    }
+
+    // Function type (if attached)
+    if (type.func && type.func->ft) {
+        rso << " -> func(";
+        // Return type
+        if (type.func->ret.t)
+            type.func->ret.t->print(rso);
+        else
+            rso << "(void)";
+
+        rso << " (";
+        for (size_t i = 0; i < type.func->args.size(); ++i) {
+            if (i) rso << ", ";
+            if (type.func->args[i].t)
+                type.func->args[i].t->print(rso);
+            else
+                rso << "(?)";
+        }
+        rso << ")";
+        rso << " cc=" << static_cast<int>(type.func->cc) << ")";
+    }
+
     return rso.str();
 }
+
 
 // ============================================================
 // Error pretty-printing

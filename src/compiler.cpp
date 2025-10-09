@@ -134,6 +134,9 @@ struct VisitorBase{
 	    }
 
 	    // TODO: add the rest
+
+	    if(types_exactly_equal(val.type,target_type))
+	    	return {};
 	    return std::unexpected(BadType<D>{debug, target_type, val.type});
 	}
 
@@ -156,6 +159,8 @@ struct VisitorBase{
 	    }
 
 	    // TODO: add the rest
+	    if(types_exactly_equal(val.type,target_type))
+	    	return {};
 	    return std::unexpected(BadType<D>{debug, target_type, val.type});
 	}
 

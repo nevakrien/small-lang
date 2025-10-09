@@ -117,15 +117,16 @@ cfn main() {
 )", 9 },
 
         { "if else",
-R"(
-cfn main() {
-    a = 5;
-    b = 6;
-    if (a > b) c = 111;
-    else c = 222;
-    return c;
-}
-)", 222 },
+	R"(
+	cfn main() {
+		c = @int 0;
+	    a = 5;
+	    b = 6;
+	    if (a > b) c = 111;
+	    else c = 222;
+	    return c;
+	}
+	)", 222 },
 
         // --- function call & dispatch ---
         { "call simple function",
@@ -142,8 +143,8 @@ cfn main() {
     f = inc;
     g = dec;
     p = &f;
-    *p = g;          // swap function pointer
-    return f(5);     // f now points to dec
+    *p = g;          # swap function pointer
+    return f(5);     # f now points to dec
 }
 )", 4 },
 

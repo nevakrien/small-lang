@@ -1,0 +1,7 @@
+cfn main() {
+    a = 5;
+    b = 6;
+    if (a > b) c = 111;
+    else c = 222;
+    return c;
+}
