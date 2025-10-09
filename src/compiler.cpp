@@ -46,6 +46,14 @@ Type* CompileContext::get_type(const TypeDec& t){
 	if(t.name=="int")
 		return &int_type;
 
+	//hack for now
+
+	if(t.name=="bool*")
+		return &bool_ptr_type;
+
+	if(t.name=="int*")
+		return &int_ptr_type;
+
 	return nullptr;
 }
 
@@ -156,6 +164,12 @@ struct VisitorBase{
 	        val.v = ctx.builder.CreateIntCast(val.v, dst, isSigned, "int_extend");
             val.type = Type{dst,nullptr,nullptr};
             return {};
+	    }
+
+	    if (src->isPointerTy() && dst->isPointerTy()){
+	    	//new llvm we dont care anymore
+	    	val.type=target_type;
+	    	return {};
 	    }
 
 	    // TODO: add the rest

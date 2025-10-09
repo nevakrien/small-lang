@@ -84,7 +84,10 @@ struct CompileContext {
           mod(std::make_unique<llvm::Module>(std::move(name), *ctx)),
           builder(*ctx),
           int_type(Type{llvm::Type::getInt64Ty(*ctx),nullptr,nullptr}),
-          bool_type(Type{llvm::Type::getInt1Ty(*ctx), nullptr, nullptr})
+          bool_type(Type{llvm::Type::getInt1Ty(*ctx), nullptr, nullptr}),
+		  
+		  int_ptr_type{llvm::PointerType::get(*ctx,0), &int_type, nullptr },
+		  bool_ptr_type{llvm::PointerType::get(*ctx,0), &bool_type, nullptr }
     {}
 
     result_t compile(const Expression& exp,Value& out);
@@ -100,6 +103,9 @@ struct CompileContext {
     llvm::IRBuilder<> builder;
     Type int_type;
     Type bool_type;
+
+    Type int_ptr_type;
+    Type bool_ptr_type;
     // std::map<std::string_view, llvm::AllocaInst*> vars;
     // std::map<std::string_view, llvm::Value*> consts;
 

@@ -1,0 +1,33 @@
+# Assumes little-endian, at least 32-bit ints.
+# Demonstrates writing a @bool through a @int* pointer,
+# modifying only the lowest byte of an integer.
+
+cfn main() {
+    # Known integer value (0x11223344)
+    x = 287454020;
+
+    # Get its address as @int*
+    p_int = &x;
+
+    # Cast to @bool* (points to lowest byte)
+    p_bool = @bool* p_int;
+
+    # Write true (1) into the bool-sized slot at the start of the int
+    *p_bool = @bool 1;
+
+    # Read back the full int
+    result = *p_int;
+
+    # Expected on little-endian:
+    # before: 68 51 34 17  (0x44 0x33 0x22 0x11)
+    # after:  01 51 34 17  => 287453953
+    if result != 287453953 {
+        # Return the bad value so the test harness detects failure
+        if(result == 0)
+            return 69;
+        return result;
+    }
+
+    # Success
+    return 0;
+}

@@ -116,9 +116,6 @@ constexpr Bp  Op::bp_infix_right() const noexcept {
 
 constexpr Bp  Op::bp_postfix() const noexcept {
     switch (kind) {
-    	// case Operator::Paren:
-        // case Operator::Bracket:     return 16;
-
         case Operator::PlusPlus:    
         case Operator::MinusMinus:  return 15;
         default:
@@ -441,9 +438,26 @@ inline ParseError parse_type(ParseStream& stream,TypeDec& type){
 	ParseError res = stream.consume("@");
 	if(res) return res;
 
-	res = stream.consume_name(type.name);
-	if(res) return res;
+	//NAME
+	const char* name_start = stream.marker();
+	while(!stream.current.empty() && 
+		(std::isalpha(stream.current.front()) 
+			|| std::isdigit(stream.current.front())
+			|| stream.current.front()=='_')
+		)
+	{
+		stream.current.remove_prefix(1);
+	}
 
+	//STARS
+	while(!stream.current.empty() && 
+		stream.current.front()=='*'
+		)
+	{
+		stream.current.remove_prefix(1);
+	}
+
+	type.name = {name_start,stream.marker()};
 	type.text = {start,stream.marker()};
 	return res;
 }
