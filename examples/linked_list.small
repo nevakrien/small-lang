@@ -1,6 +1,7 @@
-# truly defenerate casts
+# truly awful casts because we have just pointer to pointer
 
 cfn malloc(size);
+cfn free(ptr);
 
 fn store(addr,val){
     ptr = &addr;
@@ -33,11 +34,23 @@ fn sum_nodes(node) {
     return load(node)+sum_nodes(next_node);
 }
 
+fn free_list(node){
+    if(!node)
+        return 0;
+
+    next = load(node+8);
+    free(node);
+    return free_list(next);
+}
+
 cfn main(){
     null = 0;
     a = make_node(2,null);
     b = make_node(2,a);
     c = make_node(3,b);
-    
-    return sum_nodes(c)!=7;
+
+    ans = sum_nodes(c);
+    free_list(a);
+
+    return ans!=7;
 }
