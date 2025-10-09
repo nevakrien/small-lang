@@ -1,0 +1,43 @@
+# truly defenerate casts
+
+cfn malloc(size);
+
+fn store(addr,val){
+    ptr = &addr;
+    *(@int* &ptr)=addr;
+    *ptr = val;
+    return 0;
+}
+
+fn load(addr){
+    ptr = &addr;
+    *(@int* &ptr)=addr;
+    return *ptr;
+}
+
+
+fn make_node(num,next){
+    addr_num =  malloc(8*2);
+    addr_next = addr_num+8;
+
+    store(addr_num,num);
+    store(addr_next,next);
+    return addr_num;
+}
+
+fn sum_nodes(node) {
+    if(!node)
+        return 0;
+
+    next_node = load(node+8);
+    return load(node)+sum_nodes(next_node);
+}
+
+cfn main(){
+    null = 0;
+    a = make_node(2,null);
+    b = make_node(2,a);
+    c = make_node(3,b);
+    
+    return sum_nodes(c)!=7;
+}

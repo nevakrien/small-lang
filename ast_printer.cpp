@@ -31,14 +31,14 @@ int main(int argc, char** argv) {
 
     int global_index = 0;
     while (!stream.empty()) {
-        stream.skip_whitespace();
+        stream.skip_comments();
         if (stream.empty())
             break;
 
         Global g;
         auto err = parse_global(stream, g);
         if (err) {
-            std::cerr << "[parser error] " << err.what() << "\n";
+            std::cerr << "[parser error] " << err.what(stream.full) << "\n";
             if (show_text)
                 std::cerr << "At: " << err.context << "\n";
             return 1;

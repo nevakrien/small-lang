@@ -7,7 +7,7 @@
 #include <format>
 #include <charconv>
 #include <algorithm>
-
+#include <sstream>
 #include "ast.hpp"
 #include "ast_print.hpp"
 
@@ -21,7 +21,6 @@ static constexpr std::string_view keywords[] = {
     "let","as","is", "const", "struct"
 };
 
-
 struct ParseError {
     std::string message;
     std::string_view context; //position in the input stream where we ParseErrored
@@ -34,7 +33,46 @@ struct ParseError {
         return !message.empty();
     }
 
-    std::string_view what() const noexcept { return message; }
+    // std::string_view what() const noexcept { return message; }
+    //pass in original input
+	std::string what(std::string_view full_input) const {
+	    if (message.empty() || context.empty()) {
+	        return  message + "\n";
+	    }
+
+	    size_t offset = context.data() - full_input.data();
+	    if (offset >= full_input.size())
+	        offset = full_input.size() ? full_input.size() - 1 : 0;
+
+	    // find start of line
+	    size_t line_start = full_input.rfind('\n', offset);
+	    if (line_start == std::string_view::npos)
+	        line_start = 0;
+	    else
+	        line_start += 1;
+
+	    // find end of line
+	    size_t line_end = full_input.find('\n', offset);
+	    if (line_end == std::string_view::npos)
+	        line_end = full_input.size();
+
+	    // extract current line
+	    std::string_view line = full_input.substr(line_start, line_end - line_start);
+
+	    // compute line/column
+	    size_t line_num = std::count(full_input.begin(), full_input.begin() + offset, '\n') + 1;
+	    size_t column = offset - line_start + 1;
+
+	    std::ostringstream out;
+	    out << message << "\n";
+	    out << " --> line " << line_num << ", column " << column << "\n";
+	    out << "      " << line << "\n";
+	    out << "      " << std::string(column - 1, ' ') << "^\n";
+
+	    return out.str();
+	}
+
+
 };
 
 
@@ -147,24 +185,25 @@ struct ParseStream{
 	    return skiped;	    
 	}
 
-	bool skip_comments(){
-		bool skiped = skip_whitespace();
+	bool skip_comments() {
+	    bool skipped = skip_whitespace();
 
-		while(!current.empty() && 
-			(current.front()=='#'))
-		{
-        	while(!current.empty() && 
-				(current.front()!='\n'))
-        	{
-        		
-        		current.remove_prefix(1);
-        	}	
+	    while (!current.empty() && current.front() == '#') {
+	        while (!current.empty() && current.front() != '\n') {
+	            current.remove_prefix(1);
+	        }
 
-        	skiped = true;
-        	skip_whitespace();
-        }
-        return skiped;
+	        if (!current.empty() && current.front() == '\n') {
+	            current.remove_prefix(1);
+	        }
+
+	        skipped = true;
+			skip_whitespace();
+	    }
+
+	    return skipped;
 	}
+
 
 
 	const char* marker(){

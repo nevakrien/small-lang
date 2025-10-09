@@ -97,12 +97,12 @@ int compile_source(std::string_view src, const RunOptions& opt,int64_t& ret) {
     CompileContext ctx("jit_test");
 
     while (true) {
-        stream.skip_whitespace();
+        stream.skip_comments();
         if (stream.empty()) break;
 
         Global g;
         if (auto err = parse_global(stream, g)) {
-            std::cerr << "[parser error] " << err.what() << "\n";
+            std::cerr << "[parser error] " << err.what(stream.full) << "\n";
             return 1;
         }
 
