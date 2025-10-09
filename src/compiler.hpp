@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "ast.hpp"
+#include "scope.hpp"
 
 
 namespace small_lang {
@@ -102,7 +103,7 @@ struct CompileContext {
     // std::map<std::string_view, llvm::AllocaInst*> vars;
     // std::map<std::string_view, llvm::Value*> consts;
 
-    std::map<std::string_view, std::unique_ptr<Value>> local_var_addrs;
+    Scope<std::unique_ptr<Value>> local_var_addrs;
     std::map<std::string_view, std::unique_ptr<Value>> global_consts;
     std::vector<std::unique_ptr<Type>> local_type_arena;
     std::vector<std::unique_ptr<Value>> local_arena;

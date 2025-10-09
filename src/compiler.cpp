@@ -202,7 +202,7 @@ struct ExpressionVisitor : VisitorBase{
 
     result_t operator()(const Var& v) const {
         if (auto it = ctx.local_var_addrs.find(v.text); it != ctx.local_var_addrs.end()) {
-            Value* addr = it->second.get();
+            Value* addr = it->get();
             out.type = *addr->type.stored;
             out.v = ctx.builder.CreateLoad(out.type.t, addr->v, v.text);
             out.address = addr;
@@ -511,10 +511,17 @@ result_t CompileContext::compile(const Expression& exp,Value& out) {
 
 struct StatmentVisitor :VisitorBase {
     result_t compile_block(const Block& b) const {
+        ctx.local_var_addrs.push();
+
+
         for (auto& stmt : b.parts) {
             result_t r = ctx.compile(stmt);
-            if (!r) return r;
+            if (!r) {
+            	ctx.local_var_addrs.pop();
+            	return r;
+            }
         }
+        ctx.local_var_addrs.pop();
         return {};
     }
 
